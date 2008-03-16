@@ -13,7 +13,7 @@ import HsLexerPass1(lexerPass1)
 import HsTokens
 
 import Data.Maybe(catMaybes)
-import Data.List(intersperse)
+import Data.List(intersperse,isPrefixOf)
 import System.Directory(doesFileExist)
 import System.FilePath
 
@@ -21,7 +21,8 @@ import Debug.Trace
 
 -- | Get the imports of a file.
 parseFile          :: FilePath -> IO (ModName,[ModName])
-parseFile f         = parseString `fmap` readFile f
+parseFile f         = (parseString . get_text) `fmap` readFile f
+  where get_text txt = if takeExtension f == ".lhs" then delit txt else txt
 
 -- | Get the imports from a string that represents a program.
 parseString        :: String -> (ModName,[ModName])
@@ -37,7 +38,8 @@ isImp _ = Nothing
 -- parse xs | trace (show (take 10 xs)) False = undefined
 parse (_ : (Reservedid,(_,"module")) : (_,(_,m)) : is) =
                                                   (splitModName m,imports is)
-parse is = (([],"Main"),imports is)
+parse is = {-trace ("Defaulting to Main: " ++ show (take 10 is))-}
+           (([],"Main"),imports is)
 
 imports xs          = case isImp $ snd $ break (("import" ==) . snd . snd) xs of
                         Just (x,xs) -> splitModName x : imports xs
@@ -71,4 +73,21 @@ modToFile dirs m    = catMaybes `fmap` mapM check paths
   paths             = [ d </> r | d <- dirs, r <- relPaths m ]
   check p           = do x <- doesFileExist p
                          return (if x then Just p else Nothing)
+
+
+delit :: String -> String
+delit txt = unlines $ bird $ lines txt
+  where
+  bird (('>' : cs) : ls)  = (' ' : cs) : bird ls
+  bird (l : ls)
+    | "\\begin{code}" `isPrefixOf` l  = in_code ls
+    | otherwise                       = bird ls
+  bird []                             = []
+
+  in_code (l : ls)
+    | "\\end{code}" `isPrefixOf` l    = bird ls
+    | otherwise                       = l : in_code ls
+  in_code []                          = []    -- unterminated code...
+
+
 
