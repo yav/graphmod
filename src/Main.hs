@@ -16,7 +16,7 @@ main = do xs <- getArgs
           case errs of
             [] -> do let opts = foldr ($) default_opts fs
                      g <- graph (add_current opts) (map to_input ms)
-                     putStrLn (make_dot g)
+                     putStrLn (make_dot (cluster opts) g)
             _ -> hPutStrLn stderr $ usageInfo "mods" options
 
 
@@ -87,27 +87,30 @@ ins ((a:as,x),n) (Sub ts bs)  = Sub (upd ts) bs
 
 -- Render edges and a triw into the dot language
 -- XXX: Use Andy's lib
+-- XXX: Print full module name when not clustering
 --------------------------------------------------------------------------------
-make_dot (es,trie) =
-  "digraph {\n" ++ fst (to_dot 0 colors trie)
+make_dot cl (es,trie) =
+  "digraph {\n" ++ fst (to_dot cl 0 colors trie)
                 ++ unlines (map edges es) ++ "}\n"
   where edges (x,ys) = show x ++ "-> {" ++ unwords (map show ys) ++ "}"
 
 
-to_dot s cs (Sub ts (n:ns))  = let (txt,s1) = to_dot s cs (Sub ts ns)
-                               in (node n ++ txt,s1)
+to_dot cl s cs (Sub ts (n:ns))  = let (txt,s1) = to_dot cl s cs (Sub ts ns)
+                                  in (node n ++ txt,s1)
   where node (l,x) = show x ++ "[label=\"" ++ l ++ "\"]\n"
-to_dot s (c:cs) (Sub ((a,t):ts) [])  =
-  let (txt1,s1) = to_dot (s+1) cs t
-      (txt2,s2) = to_dot s1 (c:cs) (Sub ts [])
-  in (cluster ++ txt1 ++ "}\n" ++ txt2,s2)
-  where cluster = unlines [ "subgraph cluster_" ++ show s ++ "{"
-                          , "label = \"" ++ a ++ "\""
-                          , "labeljust = \"r\""
-                          , "color=\"" ++ c ++ "\""
-                          , "style = \"filled\""
-                          ]
-to_dot s _ _ = ("\n",s)
+to_dot cl s (c:cs) (Sub ((a,t):ts) [])  =
+  let (txt1,s1) = to_dot cl (s+1) cs t
+      (txt2,s2) = to_dot cl s1 (c:cs) (Sub ts [])
+  in (cluster txt1 ++ "\n" ++ txt2,s2)
+  where cluster txt
+          | cl = unlines [ "subgraph cluster_" ++ show s ++ "{"
+                         , "label = \"" ++ a ++ "\""
+                         , "labeljust = \"r\""
+                         , "color=\"" ++ c ++ "\""
+                         , "style = \"filled\""
+                         ] ++ txt ++ "}"
+          | otherwise = txt
+to_dot _ s _ _ = ("\n",s)
 
 
 
@@ -139,12 +142,14 @@ data Opts = Opts
   { inc_dirs :: [FilePath]
   , quiet :: Bool
   , with_missing :: Bool
+  , cluster :: Bool
   }
 
 default_opts = Opts
   { inc_dirs      = []
   , quiet         = False
   , with_missing  = False
+  , cluster       = True
   }
 
 add_current o = case inc_dirs o of
@@ -154,8 +159,13 @@ options =
   [ Option ['q'] ["quiet"] (NoArg set_quiet) "Do not show warnings"
   , Option ['i'] []        (ReqArg add_inc "DIR") "Add a search directory"
   , Option ['a'] ["all"]   (NoArg set_all)   "Add nodes for missing modules"
+  , Option []    ["no-cluster"] (NoArg set_no_cluster)
+                                             "Do not cluster directories"
   ]
 
 set_quiet o = o { quiet = True }
 set_all o   = o { with_missing = True }
 add_inc d o = o { inc_dirs = d : inc_dirs o }
+set_no_cluster o = o { cluster = False }
+
+
