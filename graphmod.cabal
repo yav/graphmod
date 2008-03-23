@@ -9,6 +9,6 @@ cabal-version:  >= 1.2
 
 executable graphmod
     main-is:         Main.hs
-    build-depends:   base, directory, filepath
+    build-depends:   base, directory, filepath, dotgen >= 1.1
     hs-source-dirs:  src, src/lexer
 

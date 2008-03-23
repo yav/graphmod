@@ -1,14 +1,16 @@
 import Utils
 
-import Control.Monad(when)
+import Data.Dot
+
+import Control.Monad(when,forM_)
 import Control.Monad.Fix(mfix)
-import Data.List(intersperse,elemIndex)
+import Data.List(intersperse)
 import Data.Maybe(mapMaybe,isJust)
 import System.Environment(getArgs)
 import System.IO(hPutStrLn,stderr)
 import System.FilePath
-import System.Directory
 import System.Console.GetOpt
+import Numeric(showHex)
 
 
 main = do xs <- getArgs
@@ -16,22 +18,24 @@ main = do xs <- getArgs
           case errs of
             [] -> do let opts = foldr ($) default_opts fs
                      g <- graph (add_current opts) (map to_input ms)
-                     putStrLn (make_dot (cluster opts) g)
+                     putStrLn (make_dot (use_clusters opts) g)
             _ -> hPutStrLn stderr $ usageInfo "mods" options
 
 
--- Guess if we have a file or a module name
+data Input  = File FilePath | Module ModName
+
+-- | Guess if we have a file or a module name
+to_input :: String -> Input
 to_input m
-  | e `elem` suffixes = File m
-  | otherwise         = Module (splitModName m)
-  where (f,e) = splitExtension m
+  | takeExtension m `elem` suffixes = File m
+  | otherwise                       = Module (splitModName m)
 
 
 
 
 type Edges  = [(Int,[Int])]
-data Input  = File FilePath | Module ModName
 
+graph :: Opts -> [Input] -> IO (Edges, Trie)
 graph opts ms = mfix (\ ~(_,g) -> loop g empty [] 0 ms)
   where
   loop :: Trie -> Trie -> Edges -> Int -> [Input] -> IO (Edges, Trie)
@@ -68,6 +72,10 @@ graph opts ms = mfix (\ ~(_,g) -> loop g empty [] 0 ms)
 
 -- We use tries to group modules by directory.
 --------------------------------------------------------------------------------
+
+-- | The labels on the nodes correspond to directories,
+-- the nodes on the leaves correspond to (unqualified) modules.
+-- Eeach module has a unique number.
 data Trie = Sub [(String, Trie)] [(String,Int)] deriving Show
 empty = Sub [] []
 
@@ -85,40 +93,60 @@ ins ((a:as,x),n) (Sub ts bs)  = Sub (upd ts) bs
         upd ts = (a, ins new empty) : ts
 
 
+-- Dot
+--------------------------------------------------------------------------------
+
 -- Render edges and a triw into the dot language
--- XXX: Use Andy's lib
 -- XXX: Print full module name when not clustering
 --------------------------------------------------------------------------------
-make_dot cl (es,trie) =
-  "digraph {\n" ++ fst (to_dot cl 0 colors trie)
-                ++ unlines (map edges es) ++ "}\n"
-  where edges (x,ys) = show x ++ "-> {" ++ unwords (map show ys) ++ "}"
+
+make_dot cl (es,t) =
+  showDot $
+  do if cl then make_clustered_dot 0 t
+           else make_unclustered_dot 0 "" t >> return ()
+     forM_ es $ \(x,ys) -> forM_ ys $ \y -> show x .->. show y
 
 
-to_dot cl s cs (Sub ts (n:ns))  = let (txt,s1) = to_dot cl s cs (Sub ts ns)
-                                  in (node n ++ txt,s1)
-  where node (l,x) = show x ++ "[label=\"" ++ l ++ "\"]\n"
-to_dot cl s (c:cs) (Sub ((a,t):ts) [])  =
-  let (txt1,s1) = to_dot cl (s+1) cs t
-      (txt2,s2) = to_dot cl s1 (c:cs) (Sub ts [])
-  in (cluster txt1 ++ "\n" ++ txt2,s2)
-  where cluster txt
-          | cl = unlines [ "subgraph cluster_" ++ show s ++ "{"
-                         , "label = \"" ++ a ++ "\""
-                         , "labeljust = \"r\""
-                         , "color=\"" ++ c ++ "\""
-                         , "style = \"filled\""
-                         ] ++ txt ++ "}"
-          | otherwise = txt
-to_dot _ s _ _ = ("\n",s)
+make_clustered_dot c (Sub xs ys) =
+  do forM_ ys $ \(xs,n) -> named_node (show n) [("label",xs)]
+     forM_ xs $ \(name,sub) ->
+       cluster name $
+       do attribute "label" name
+          attribute "color" (colors !! c)
+          attribute "style" "filled"
+          let c1 = c + 1
+          c1 `seq` make_clustered_dot c1 sub
+
+
+make_unclustered_dot c pre (Sub xs ys) =
+  do forM_ ys $ \(xs,n) -> named_node (show n) [ ("label", pre ++ xs ++ "(" ++ colors !! c ++ ")")
+                                               , ("color", colors !! c)
+                                               , ("style", "filled")
+                                               ]
+     let c1 = if null ys then c else c + 1
+     c1 `seq` loop xs c1
+  where
+  loop ((name,sub):xs) c1 =
+    do let pre1 = pre ++ name ++ "."
+       c2 <- make_unclustered_dot c1 pre1 sub
+       loop xs c2
+  loop [] c2 = return c2
 
 
 
-colors = ["#ccffcc", "#99ff99", "#66ff66", "#669966" ] ++
-         ["#ffcccc", "#ff9999", "#ff6666", "#996666" ] ++
-         ["#ccccff", "#9999ff", "#6666ff", "#666699" ] ++
-         repeat "#cccccc"
+-- XXX: generate all?
+colors = map col (ys1 ++ ys2) ++ repeat "#cccccc"
+  where
+  xs1   = [ (1,0,1), (2,0,2), (3,0,3), (2,1,2), (3,1,3), (3,2,3) ]
+  xs2   = map rotR xs1
+  xs3   = map rotR xs2
+  ys1   = xs1 ++ xs2 ++ xs3
+  ys2   = map compl (reverse ys1)
 
+  col (x,y,z)   = '#' : (showHex (mk x) $ showHex (mk y) $ showHex (mk z) "")
+  mk n          = 0xFF - n * 0x33
+  rotR (x,y,z)  = (z,x,y)
+  compl (x,y,z) = (3-x,3-y,3-z)
 
 -- Warnings and error messages
 --------------------------------------------------------------------------------
@@ -142,14 +170,14 @@ data Opts = Opts
   { inc_dirs :: [FilePath]
   , quiet :: Bool
   , with_missing :: Bool
-  , cluster :: Bool
+  , use_clusters :: Bool
   }
 
 default_opts = Opts
   { inc_dirs      = []
   , quiet         = False
   , with_missing  = False
-  , cluster       = True
+  , use_clusters  = True
   }
 
 add_current o = case inc_dirs o of
@@ -166,6 +194,6 @@ options =
 set_quiet o = o { quiet = True }
 set_all o   = o { with_missing = True }
 add_inc d o = o { inc_dirs = d : inc_dirs o }
-set_no_cluster o = o { cluster = False }
+set_no_cluster o = o { use_clusters = False }
 
 
