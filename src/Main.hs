@@ -93,11 +93,7 @@ ins ((a:as,x),n) (Sub ts bs)  = Sub (upd ts) bs
         upd ts = (a, ins new empty) : ts
 
 
--- Dot
---------------------------------------------------------------------------------
-
--- Render edges and a triw into the dot language
--- XXX: Print full module name when not clustering
+-- Render edges and a trie into the dot language
 --------------------------------------------------------------------------------
 
 make_dot cl (es,t) =
@@ -119,7 +115,7 @@ make_clustered_dot c (Sub xs ys) =
 
 
 make_unclustered_dot c pre (Sub xs ys) =
-  do forM_ ys $ \(xs,n) -> named_node (show n) [ ("label", pre ++ xs ++ "(" ++ colors !! c ++ ")")
+  do forM_ ys $ \(xs,n) -> named_node (show n) [ ("label", pre ++ xs)
                                                , ("color", colors !! c)
                                                , ("style", "filled")
                                                ]
