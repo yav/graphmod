@@ -1,5 +1,5 @@
 name:           graphmod
-version:        1.0
+version:        1.1
 license:        BSD3
 license-file:   LICENSE
 author:         Iavor S. Diatchki
@@ -9,6 +9,6 @@ cabal-version:  >= 1.2
 
 executable graphmod
     main-is:         Main.hs
-    build-depends:   base, directory, filepath, dotgen >= 1.1
+    build-depends:   base, directory, filepath, dotgen >= 0.1.1
     hs-source-dirs:  src, src/lexer
 

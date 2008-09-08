@@ -12,7 +12,6 @@ import System.FilePath
 import System.Console.GetOpt
 import Numeric(showHex)
 
-
 main = do xs <- getArgs
           let (fs, ms, errs) = getOpt Permute options xs
           case errs of
@@ -100,25 +99,25 @@ make_dot cl (es,t) =
   showDot $
   do if cl then make_clustered_dot 0 t
            else make_unclustered_dot 0 "" t >> return ()
-     forM_ es $ \(x,ys) -> forM_ ys $ \y -> show x .->. show y
+     forM_ es $ \(x,ys) -> forM_ ys $ \y -> userNodeId x .->. userNodeId y
 
 
 make_clustered_dot c (Sub xs ys) =
-  do forM_ ys $ \(xs,n) -> named_node (show n) [("label",xs)]
+  do forM_ ys $ \(xs,n) -> userNode (userNodeId n) [("label",xs)]
      forM_ xs $ \(name,sub) ->
-       cluster name $
-       do attribute "label" name
-          attribute "color" (colors !! c)
-          attribute "style" "filled"
+       cluster $
+       do attribute ("label", name)
+          attribute ("color" , colors !! c)
+          attribute ("style", "filled")
           let c1 = c + 1
           c1 `seq` make_clustered_dot c1 sub
 
 
 make_unclustered_dot c pre (Sub xs ys) =
-  do forM_ ys $ \(xs,n) -> named_node (show n) [ ("label", pre ++ xs)
-                                               , ("color", colors !! c)
-                                               , ("style", "filled")
-                                               ]
+  do forM_ ys $ \(xs,n) -> userNode (userNodeId n) [ ("label", pre ++ xs)
+                                                   , ("color", colors !! c)
+                                                   , ("style", "filled")
+                                                   ]
      let c1 = if null ys then c else c + 1
      c1 `seq` loop xs c1
   where
