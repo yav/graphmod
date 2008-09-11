@@ -1,9 +1,10 @@
 name:           graphmod
-version:        1.1
+version:        1.1.1
 license:        BSD3
 license-file:   LICENSE
 author:         Iavor S. Diatchki
 maintainer:     iavor.diatchki@gmail.com
+homepage:       http://github.com/yav/graphmod
 build-type:     Simple
 cabal-version:  >= 1.2
 synopsis:       Present the module dependecies of a program as a "dot" graph.
@@ -15,5 +16,5 @@ executable graphmod
     main-is:         Main.hs
     other-modules:   Utils, HsLayoutPre, HsLexerPass1, HsLexerPos
     other-modules:   HsLex, HsLexUtils, HsTokens
-    build-depends:   base, directory, filepath, dotgen >= 0.1.1
+    build-depends:   base, directory, filepath, dotgen >= 0.2 && < 0.3
     hs-source-dirs:  src, src/lexer

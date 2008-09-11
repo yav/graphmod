@@ -1,6 +1,6 @@
 import Utils
 
-import Data.Dot
+import Text.Dot
 
 import Control.Monad(when,forM_)
 import Control.Monad.Fix(mfix)
