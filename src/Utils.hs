@@ -21,18 +21,22 @@ import Debug.Trace
 
 -- | Get the imports of a file.
 parseFile          :: FilePath -> IO (ModName,[ModName])
-parseFile f         = (parseString . get_text) `fmap` readFile f
+parseFile f         = (debug . parseString . get_text) `fmap` readFile f
   where get_text txt = if takeExtension f == ".lhs" then delit txt else txt
+        debug z@(x,y) = z -- trace ("imports of " ++ show x ++ show y) z
 
 -- | Get the imports from a string that represents a program.
 parseString        :: String -> (ModName,[ModName])
-parseString         = parse . lexerPass1
+parseString         = parse . debug . lexerPass1
+  where debug xs = xs -- trace (unlines $ "tokens: " : map show xs) xs
 
 
 isImp (_ : (Conid, (_,x)) : xs)   = Just (x,xs)
 isImp (_ : (Qconid, (_,x)) : xs)  = Just (x,xs)
-isImp (_ : (Specialid,_) : (Conid, (_,x)) : xs)   = Just (x,xs)
-isImp (_ : (Specialid,_) : (Qconid, (_,x)) : xs)  = Just (x,xs)
+-- isImp (_ : (Specialid,_) : (Conid, (_,x)) : xs)   = Just (x,xs)
+-- isImp (_ : (Specialid,_) : (Qconid, (_,x)) : xs)  = Just (x,xs)
+isImp (_ : (Varid,_) : (Conid, (_,x)) : xs)   = Just (x,xs)
+isImp (_ : (Varid,_) : (Qconid, (_,x)) : xs)  = Just (x,xs)
 isImp _ = Nothing
 
 -- parse xs | trace (show (take 10 xs)) False = undefined
