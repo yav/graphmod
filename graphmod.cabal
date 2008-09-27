@@ -1,5 +1,5 @@
 name:           graphmod
-version:        1.1.2
+version:        1.1.3
 license:        BSD3
 license-file:   LICENSE
 author:         Iavor S. Diatchki
@@ -14,7 +14,7 @@ category:       Development
 
 executable graphmod
     main-is:         Main.hs
-    other-modules:   Utils, HsLayoutPre, HsLexerPass1, HsLexerPos
-    other-modules:   HsLex, HsLexUtils, HsTokens
-    build-depends:   base, directory, filepath, dotgen >= 0.2 && < 0.3
-    hs-source-dirs:  src, src/lexer
+    other-modules:   Utils
+    build-depends:   base, directory, filepath, dotgen >= 0.2 && < 0.3,
+                     haskell-lexer
+    hs-source-dirs:  src

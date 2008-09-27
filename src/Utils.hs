@@ -9,8 +9,7 @@ module Utils
   , suffixes
   ) where
 
-import HsLexerPass1(lexerPass1)
-import HsTokens
+import Language.Haskell.Lexer(lexerPass1,Token(..))
 
 import Data.Maybe(catMaybes)
 import Data.List(intersperse,isPrefixOf)
