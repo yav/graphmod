@@ -48,10 +48,10 @@ imports xs          = case isImp $ snd $ break (("import" ==) . snd . snd) xs of
                         Just (x,xs) -> splitModName x : imports xs
                         _           -> []
 
--- | A hirarchical module name.
+-- | A hierarchical module name.
 type ModName        = ([String],String)
 
--- | Convert a string name into a hirarchical name.
+-- | Convert a string name into a hierarchical name.
 splitModName       :: String -> ModName
 splitModName xs     = case break ('.'==) xs of
                         (xs,_:ys)  -> let (as,bs) = splitModName ys
@@ -61,7 +61,7 @@ splitModName xs     = case break ('.'==) xs of
 joinModName        :: ModName -> String
 joinModName (xs,y)  = concat $ intersperse "." (xs ++ [y])
 
--- | The files in which a module moght reside.
+-- | The files in which a module might reside.
 relPaths           :: ModName -> [FilePath]
 relPaths (xs,y)     = [ prefix ++ suffix | suffix <- suffixes ]
   where prefix      = foldr (</>) y xs

@@ -74,7 +74,7 @@ graph opts ms = mfix (\ ~(_,g) -> loop g empty [] 0 ms)
 
 -- | The labels on the nodes correspond to directories,
 -- the nodes on the leaves correspond to (unqualified) modules.
--- Eeach module has a unique number.
+-- Each module has a unique number.
 data Trie = Sub [(String, Trie)] [(String,Int)] deriving Show
 empty = Sub [] []
 
