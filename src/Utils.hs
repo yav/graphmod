@@ -9,27 +9,23 @@ module Utils
   , suffixes
   ) where
 
-import Language.Haskell.Lexer(lexerPass1,Token(..))
+import Language.Haskell.Lexer(lexerPass1,Token(..),PosToken)
 
 import Data.Maybe(catMaybes)
 import Data.List(intersperse,isPrefixOf)
 import System.Directory(doesFileExist)
 import System.FilePath
 
-import Debug.Trace
-
 -- | Get the imports of a file.
 parseFile          :: FilePath -> IO (ModName,[ModName])
-parseFile f         = (debug . parseString . get_text) `fmap` readFile f
+parseFile f         = (parseString . get_text) `fmap` readFile f
   where get_text txt = if takeExtension f == ".lhs" then delit txt else txt
-        debug z@(x,y) = z -- trace ("imports of " ++ show x ++ show y) z
 
 -- | Get the imports from a string that represents a program.
 parseString        :: String -> (ModName,[ModName])
-parseString         = parse . debug . lexerPass1
-  where debug xs = xs -- trace (unlines $ "tokens: " : map show xs) xs
+parseString         = parse . lexerPass1
 
-
+isImp              :: [PosToken] -> Maybe (String, [PosToken])
 isImp (_ : (Conid, (_,x)) : xs)   = Just (x,xs)
 isImp (_ : (Qconid, (_,x)) : xs)  = Just (x,xs)
 -- isImp (_ : (Specialid,_) : (Conid, (_,x)) : xs)   = Just (x,xs)
@@ -38,13 +34,13 @@ isImp (_ : (Varid,_) : (Conid, (_,x)) : xs)   = Just (x,xs)
 isImp (_ : (Varid,_) : (Qconid, (_,x)) : xs)  = Just (x,xs)
 isImp _ = Nothing
 
--- parse xs | trace (show (take 10 xs)) False = undefined
+parse              :: [PosToken] -> (ModName,[ModName])
 parse (_ : (Reservedid,(_,"module")) : (_,(_,m)) : is) =
                                                   (splitModName m,imports is)
-parse is = {-trace ("Defaulting to Main: " ++ show (take 10 is))-}
-           (([],"Main"),imports is)
+parse is            = (([],"Main"),imports is)
 
-imports xs          = case isImp $ snd $ break (("import" ==) . snd . snd) xs of
+imports            :: [PosToken] -> [ModName]
+imports ts          = case isImp $ snd $ break (("import" ==) . snd . snd) ts of
                         Just (x,xs) -> splitModName x : imports xs
                         _           -> []
 
@@ -53,10 +49,10 @@ type ModName        = ([String],String)
 
 -- | Convert a string name into a hierarchical name.
 splitModName       :: String -> ModName
-splitModName xs     = case break ('.'==) xs of
+splitModName cs     = case break ('.'==) cs of
                         (xs,_:ys)  -> let (as,bs) = splitModName ys
                                    in (xs:as,bs)
-                        _ -> ([],xs)
+                        _ -> ([],cs)
 
 joinModName        :: ModName -> String
 joinModName (xs,y)  = concat $ intersperse "." (xs ++ [y])
@@ -66,7 +62,8 @@ relPaths           :: ModName -> [FilePath]
 relPaths (xs,y)     = [ prefix ++ suffix | suffix <- suffixes ]
   where prefix      = foldr (</>) y xs
 
-suffixes    = [".hs",".lhs"]
+suffixes           :: [String]
+suffixes            = [".hs",".lhs"]
 
 -- | The files in which a module might reside.
 -- We report only files that exist.

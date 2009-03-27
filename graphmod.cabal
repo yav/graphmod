@@ -18,3 +18,4 @@ executable graphmod
     build-depends:   base, directory, filepath, dotgen >= 0.2 && < 0.3,
                      haskell-lexer
     hs-source-dirs:  src
+    ghc-options:     -Wall -O2
