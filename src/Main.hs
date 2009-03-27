@@ -12,6 +12,7 @@ import System.FilePath
 import System.Console.GetOpt
 import Numeric(showHex)
 
+main :: IO ()
 main = do xs <- getArgs
           let (fs, ms, errs) = getOpt Permute options xs
           case errs of
@@ -35,7 +36,7 @@ to_input m
 type Edges  = [(Int,[Int])]
 
 graph :: Opts -> [Input] -> IO (Edges, Trie)
-graph opts ms = mfix (\ ~(_,g) -> loop g empty [] 0 ms)
+graph opts inputs = mfix (\ ~(_,g) -> loop g empty [] 0 inputs)
   where
   loop :: Trie -> Trie -> Edges -> Int -> [Input] -> IO (Edges, Trie)
   loop _ done es _ [] = return (es,done)
@@ -76,25 +77,28 @@ graph opts ms = mfix (\ ~(_,g) -> loop g empty [] 0 ms)
 -- the nodes on the leaves correspond to (unqualified) modules.
 -- Each module has a unique number.
 data Trie = Sub [(String, Trie)] [(String,Int)] deriving Show
+
+empty :: Trie
 empty = Sub [] []
 
+lkp :: Trie -> ModName -> Maybe Int
 lkp (Sub _ bs) ([],a)   = lookup a bs
 lkp (Sub as _) (k:ks,a) = (`lkp` (ks,a)) =<< lookup k as
 
-
+ins :: (ModName,Int) -> Trie -> Trie
 ins (([],x),n) (Sub as bs)    = Sub as ((x,n):bs)
 ins ((a:as,x),n) (Sub ts bs)  = Sub (upd ts) bs
   where new = ((as,x),n)
 
-        upd ((k,t):ts)
-          | k < a     = (k,t) : upd ts
-          | k == a    = (k, ins new t) : ts
-        upd ts = (a, ins new empty) : ts
+        upd ((k,t):ss)
+          | k < a     = (k,t) : upd ss
+          | k == a    = (k, ins new t) : ss
+        upd ss = (a, ins new empty) : ss
 
 
 -- Render edges and a trie into the dot language
 --------------------------------------------------------------------------------
-
+make_dot :: Bool -> (Edges,Trie) -> String
 make_dot cl (es,t) =
   showDot $
   do if cl then make_clustered_dot 0 t
@@ -102,8 +106,9 @@ make_dot cl (es,t) =
      forM_ es $ \(x,ys) -> forM_ ys $ \y -> userNodeId x .->. userNodeId y
 
 
+make_clustered_dot :: Int -> Trie -> Dot ()
 make_clustered_dot c (Sub xs ys) =
-  do forM_ ys $ \(xs,n) -> userNode (userNodeId n) [("label",xs)]
+  do forM_ ys $ \(ls,n) -> userNode (userNodeId n) [("label",ls)]
      forM_ xs $ \(name,sub) ->
        cluster $
        do attribute ("label", name)
@@ -113,25 +118,29 @@ make_clustered_dot c (Sub xs ys) =
           c1 `seq` make_clustered_dot c1 sub
 
 
+make_unclustered_dot :: Int -> String -> Trie -> Dot Int
 make_unclustered_dot c pre (Sub xs ys) =
-  do forM_ ys $ \(xs,n) -> userNode (userNodeId n) [ ("label", pre ++ xs)
+  do forM_ ys $ \(ls,n) -> userNode (userNodeId n) [ ("label", pre ++ ls)
                                                    , ("color", colors !! c)
                                                    , ("style", "filled")
                                                    ]
      let c1 = if null ys then c else c + 1
      c1 `seq` loop xs c1
   where
-  loop ((name,sub):xs) c1 =
+  loop ((name,sub):ms) c1 =
     do let pre1 = pre ++ name ++ "."
        c2 <- make_unclustered_dot c1 pre1 sub
-       loop xs c2
+       loop ms c2
   loop [] c2 = return c2
 
 
+type Color = (Int,Int,Int)
 
 -- XXX: generate all?
+colors :: [String]
 colors = map col (ys1 ++ ys2) ++ repeat "#cccccc"
   where
+  xs1  :: [Color]
   xs1   = [ (1,0,1), (2,0,2), (3,0,3), (2,1,2), (3,1,3), (3,2,3) ]
   xs2   = map rotR xs1
   xs3   = map rotR xs2
@@ -145,8 +154,7 @@ colors = map col (ys1 ++ ys2) ++ repeat "#cccccc"
 
 -- Warnings and error messages
 --------------------------------------------------------------------------------
-err msg             = error ("ERROR: " ++ msg)
-
+warn               :: Opts -> String -> IO ()
 warn o _ | quiet o  = return ()
 warn _ msg          = hPutStrLn stderr ("WARNING: " ++ msg)
 
@@ -162,12 +170,15 @@ ambigMsg m xs       = "Multiple files for module " ++ joinModName m
 -- Command line options
 --------------------------------------------------------------------------------
 data Opts = Opts
-  { inc_dirs :: [FilePath]
-  , quiet :: Bool
-  , with_missing :: Bool
-  , use_clusters :: Bool
+  { inc_dirs      :: [FilePath]
+  , quiet         :: Bool
+  , with_missing  :: Bool
+  , use_clusters  :: Bool
   }
 
+type OptT = Opts -> Opts
+
+default_opts :: Opts
 default_opts = Opts
   { inc_dirs      = []
   , quiet         = False
@@ -175,9 +186,7 @@ default_opts = Opts
   , use_clusters  = True
   }
 
-add_current o = case inc_dirs o of
-                  [] -> o { inc_dirs = ["."] }
-                  _  -> o
+options :: [OptDescr OptT]
 options =
   [ Option ['q'] ["quiet"] (NoArg set_quiet) "Do not show warnings"
   , Option ['i'] []        (ReqArg add_inc "DIR") "Add a search directory"
@@ -186,9 +195,21 @@ options =
                                              "Do not cluster directories"
   ]
 
-set_quiet o = o { quiet = True }
-set_all o   = o { with_missing = True }
-add_inc d o = o { inc_dirs = d : inc_dirs o }
-set_no_cluster o = o { use_clusters = False }
+add_current      :: OptT
+add_current o     = case inc_dirs o of
+                      [] -> o { inc_dirs = ["."] }
+                      _  -> o
+
+set_quiet        :: OptT
+set_quiet o       = o { quiet = True }
+
+set_all          :: OptT
+set_all o         = o { with_missing = True }
+
+set_no_cluster   :: OptT
+set_no_cluster o  = o { use_clusters = False }
+
+add_inc          :: FilePath -> OptT
+add_inc d o       = o { inc_dirs = d : inc_dirs o }
 
 
