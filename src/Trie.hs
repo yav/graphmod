@@ -13,7 +13,7 @@ lookup [] (Sub _ b)       = b
 lookup (k:ks) (Sub as _)  = Trie.lookup ks =<< Prelude.lookup k as
 
 lookupPrefix :: Eq a => [a] -> Trie a b -> Maybe ([a],b)
-lookupPrefix ks     (Sub _ (Just b)) = Just ([],b)
+lookupPrefix _      (Sub _ (Just b)) = Just ([],b)
 lookupPrefix (k:ks) (Sub ts _)       = do t <- Prelude.lookup k ts
                                           (as,v) <- lookupPrefix ks t
                                           return ((k:as),v)
