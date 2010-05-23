@@ -41,7 +41,7 @@ graph opts inputs = mfix (\ ~(_,g) -> loop g empty [] 0 inputs)
   loop :: Trie -> Trie -> Edges -> Int -> [Input] -> IO (Edges, Trie)
   loop _ done es _ [] = return (es,done)
   loop mods done es size (Module m:ms)
-    | isJust (lkp done m) = loop mods done es size ms
+    | ignore done m = loop mods done es size ms
     | otherwise =
       do fs <- modToFile (inc_dirs opts) m
          let size1 = size + 1
@@ -56,9 +56,12 @@ graph opts inputs = mfix (\ ~(_,g) -> loop g empty [] 0 inputs)
 
   loop mods done es size (File f:ms) =
     do (m,is) <- parseFile f
-       case lkp done m of
-         Just {} -> loop mods done es size ms
-         Nothing -> add mods done es size m is ms
+       if ignore done m
+         then loop mods done es size ms
+         else add mods done es size m is ms
+
+  ignore done m = (m `elem` ignore_mods opts)
+               || isJust (lkp done m)
 
   add mods done es size m imps ms =
     let deps = mapMaybe (lkp mods) imps
@@ -174,6 +177,7 @@ data Opts = Opts
   , quiet         :: Bool
   , with_missing  :: Bool
   , use_clusters  :: Bool
+  , ignore_mods   :: [ModName]
   }
 
 type OptT = Opts -> Opts
@@ -184,6 +188,7 @@ default_opts = Opts
   , quiet         = False
   , with_missing  = False
   , use_clusters  = True
+  , ignore_mods   = []
   }
 
 options :: [OptDescr OptT]
@@ -193,6 +198,9 @@ options =
   , Option ['a'] ["all"]   (NoArg set_all)   "Add nodes for missing modules"
   , Option []    ["no-cluster"] (NoArg set_no_cluster)
                                              "Do not cluster directories"
+  , Option ['r'] ["remove-module"] (ReqArg add_ignore_mod "MODULE")
+                                            "Remove a module from the graph"
+
   ]
 
 add_current      :: OptT
@@ -212,4 +220,5 @@ set_no_cluster o  = o { use_clusters = False }
 add_inc          :: FilePath -> OptT
 add_inc d o       = o { inc_dirs = d : inc_dirs o }
 
-
+add_ignore_mod :: String -> OptT
+add_ignore_mod m o = o { ignore_mods = splitModName m : ignore_mods o }
