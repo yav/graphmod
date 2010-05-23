@@ -74,10 +74,21 @@ graph opts inputs = mfix $ \ ~(_,mods) ->
       nodeFor x         = lookupMod x mods
       insMod (q,m) n t  = Trie.insert q (\xs -> (m,n) : fromMaybe [] xs) t
       lookupMod (q,m)   = lookup m <=< Trie.lookup q
-      ignore done m     = elem m (ignore_mods opts) || isJust (lookupMod m done)
+      ignore done m     = isIgnored (ignore_mods opts) m
+                       || isJust (lookupMod m done)
 
   in loop Trie.empty Map.empty 0 inputs
   
+
+isIgnored :: IgnoreSet -> ModName -> Bool
+isIgnored (Trie.Sub _ (Just IgnoreAll))       _        = True
+isIgnored (Trie.Sub _ (Just (IgnoreSome ms))) ([],m)   = elem m ms
+isIgnored (Trie.Sub _ Nothing)                ([],_)   = False
+isIgnored (Trie.Sub ts _)                     (q:qs,m) =
+  case lookup q ts of
+    Nothing -> False
+    Just t  -> isIgnored t (qs,m)
+
 
 -- We use tries to group modules by directory.
 --------------------------------------------------------------------------------
@@ -164,8 +175,11 @@ data Opts = Opts
   , quiet         :: Bool
   , with_missing  :: Bool
   , use_clusters  :: Bool
-  , ignore_mods   :: [ModName]
+  , ignore_mods   :: IgnoreSet
   }
+
+type IgnoreSet  = Trie.Trie String IgnoreSpec
+data IgnoreSpec = IgnoreAll | IgnoreSome [String]
 
 type OptT = Opts -> Opts
 
@@ -175,19 +189,28 @@ default_opts = Opts
   , quiet         = False
   , with_missing  = False
   , use_clusters  = True
-  , ignore_mods   = []
+  , ignore_mods   = Trie.empty
   }
 
 options :: [OptDescr OptT]
 options =
-  [ Option ['q'] ["quiet"] (NoArg set_quiet) "Do not show warnings"
-  , Option ['i'] []        (ReqArg add_inc "DIR") "Add a search directory"
-  , Option ['a'] ["all"]   (NoArg set_all)   "Add nodes for missing modules"
-  , Option []    ["no-cluster"] (NoArg set_no_cluster)
-                                             "Do not cluster directories"
-  , Option ['r'] ["remove-module"] (ReqArg add_ignore_mod "MODULE")
-                                            "Remove a module from the graph"
+  [ Option ['q'] ["quiet"] (NoArg set_quiet)
+    "Do not show warnings."
 
+  , Option ['i'] []        (ReqArg add_inc "DIR")
+    "Add a search directory."
+
+  , Option ['a'] ["all"]   (NoArg set_all)
+    "Add nodes for missing modules."
+
+  , Option []    ["no-cluster"] (NoArg set_no_cluster)
+    "Do not cluster directories."
+
+  , Option ['r'] ["remove-module"] (ReqArg add_ignore_mod "MODULE")
+    "Remove a module from the graph."
+
+  , Option ['R'] ["remove-qual"]   (ReqArg add_ignore_qual "QUALIFIER")
+    "Remove all modules that start with the given qualifier."
   ]
 
 add_current      :: OptT
@@ -207,5 +230,18 @@ set_no_cluster o  = o { use_clusters = False }
 add_inc          :: FilePath -> OptT
 add_inc d o       = o { inc_dirs = d : inc_dirs o }
 
-add_ignore_mod :: String -> OptT
-add_ignore_mod m o = o { ignore_mods = splitModName m : ignore_mods o }
+add_ignore_mod   :: String -> OptT
+add_ignore_mod s o = o { ignore_mods = ins (splitModName s) }
+  where
+  ins (q,m) = Trie.insert q (upd m) (ignore_mods o)
+
+  upd _ (Just IgnoreAll)        = IgnoreAll
+  upd m (Just (IgnoreSome ms))  = IgnoreSome (m:ms)
+  upd m Nothing                 = IgnoreSome [m]
+
+add_ignore_qual :: String -> OptT
+add_ignore_qual s o = o { ignore_mods = Trie.insert (splitQualifier s)
+                                          (const IgnoreAll) (ignore_mods o) }
+
+
+
