@@ -1,11 +1,13 @@
 import Utils
+import qualified Trie
 
 import Text.Dot
 
-import Control.Monad(when,forM_)
+import Control.Monad(when,forM_,(<=<))
 import Control.Monad.Fix(mfix)
 import Data.List(intersperse)
-import Data.Maybe(mapMaybe,isJust)
+import Data.Maybe(mapMaybe,isJust,fromMaybe)
+import qualified Data.IntMap as Map
 import System.Environment(getArgs)
 import System.IO(hPutStrLn,stderr)
 import System.FilePath
@@ -32,86 +34,70 @@ to_input m
 
 
 
+type Nodes    = Trie.Trie String [(String,Int)]
+type Edges    = Map.IntMap [Int]
 
-type Edges  = [(Int,[Int])]
+graph :: Opts -> [Input] -> IO (Edges, Nodes)
+graph opts inputs = mfix $ \ ~(_,mods) ->
+  -- NOTE: 'mods' is the final value of 'done' in the funciton 'loop'.
 
-graph :: Opts -> [Input] -> IO (Edges, Trie)
-graph opts inputs = mfix (\ ~(_,g) -> loop g empty [] 0 inputs)
-  where
-  loop :: Trie -> Trie -> Edges -> Int -> [Input] -> IO (Edges, Trie)
-  loop _ done es _ [] = return (es,done)
-  loop mods done es size (Module m:ms)
-    | ignore done m = loop mods done es size ms
-    | otherwise =
-      do fs <- modToFile (inc_dirs opts) m
-         let size1 = size + 1
-         seq size1 $ case fs of
-           []     -> do warn opts (notFoundMsg m)
-                        if with_missing opts
-                          then add mods done es size m [] ms
-                          else loop mods done es size ms
-           f : gs -> do when (not (null gs)) (warn opts (ambigMsg m fs))
-                        (x,imps) <- parseFile f
-                        add mods done es size x imps ms
+  let loop :: Nodes -> Edges -> Int -> [Input] -> IO (Edges, Nodes)
 
-  loop mods done es size (File f:ms) =
-    do (m,is) <- parseFile f
-       if ignore done m
-         then loop mods done es size ms
-         else add mods done es size m is ms
+      loop done es _ [] = return (es,done)
 
-  ignore done m = (m `elem` ignore_mods opts)
-               || isJust (lkp done m)
+      loop done es size (Module m : todo)
+        | ignore done m = loop done es size todo
+        | otherwise =
+          do fs <- modToFile (inc_dirs opts) m
+             case fs of
+               []     -> do warn opts (notFoundMsg m)
+                            if with_missing opts
+                              then add done es size m [] todo
+                              else loop done es size todo
+               f : gs -> do when (not (null gs)) (warn opts (ambigMsg m fs))
+                            (x,imps) <- parseFile f
+                            add done es size x imps todo
+    
+      loop done es size (File f : todo) =
+        do (m,is) <- parseFile f
+           if ignore done m
+             then loop done es size todo
+             else add done es size m is todo
 
-  add mods done es size m imps ms =
-    let deps = mapMaybe (lkp mods) imps
-        size1 = size + 1
-    in size1 `seq` loop mods (ins (m,size) done)
-                                  ((size,deps) : es)
-                                  size1
-                                  (map Module imps ++ ms)
+      add done es size m imps ms =
+        let ms1     = map Module imps ++ ms
+            imp_ids = mapMaybe nodeFor imps
+            size1   = 1 + size
+        in size1 `seq`
+            loop (insMod m size done) (Map.insert size imp_ids es) size1 ms1
 
+      nodeFor x         = lookupMod x mods
+      insMod (q,m) n t  = Trie.insert q (\xs -> (m,n) : fromMaybe [] xs) t
+      lookupMod (q,m)   = lookup m <=< Trie.lookup q
+      ignore done m     = elem m (ignore_mods opts) || isJust (lookupMod m done)
 
+  in loop Trie.empty Map.empty 0 inputs
+  
 
 -- We use tries to group modules by directory.
 --------------------------------------------------------------------------------
 
--- | The labels on the nodes correspond to directories,
--- the nodes on the leaves correspond to (unqualified) modules.
--- Each module has a unique number.
-data Trie = Sub [(String, Trie)] [(String,Int)] deriving Show
-
-empty :: Trie
-empty = Sub [] []
-
-lkp :: Trie -> ModName -> Maybe Int
-lkp (Sub _ bs) ([],a)   = lookup a bs
-lkp (Sub as _) (k:ks,a) = (`lkp` (ks,a)) =<< lookup k as
-
-ins :: (ModName,Int) -> Trie -> Trie
-ins (([],x),n) (Sub as bs)    = Sub as ((x,n):bs)
-ins ((a:as,x),n) (Sub ts bs)  = Sub (upd ts) bs
-  where new = ((as,x),n)
-
-        upd ((k,t):ss)
-          | k < a     = (k,t) : upd ss
-          | k == a    = (k, ins new t) : ss
-        upd ss = (a, ins new empty) : ss
 
 
 -- Render edges and a trie into the dot language
 --------------------------------------------------------------------------------
-make_dot :: Bool -> (Edges,Trie) -> String
+make_dot :: Bool -> (Edges,Nodes) -> String
 make_dot cl (es,t) =
   showDot $
   do if cl then make_clustered_dot 0 t
            else make_unclustered_dot 0 "" t >> return ()
-     forM_ es $ \(x,ys) -> forM_ ys $ \y -> userNodeId x .->. userNodeId y
+     forM_ (Map.toList es) $ \(x,ys) ->
+                        forM_ ys $ \y -> userNodeId x .->. userNodeId y
 
 
-make_clustered_dot :: Int -> Trie -> Dot ()
-make_clustered_dot c (Sub xs ys) =
-  do forM_ ys $ \(ls,n) -> userNode (userNodeId n) [("label",ls)]
+make_clustered_dot :: Int -> Nodes -> Dot ()
+make_clustered_dot c (Trie.Sub xs ys) =
+  do forM_ (fromMaybe [] ys) $ \(ls,n) -> userNode (userNodeId n) [("label",ls)]
      forM_ xs $ \(name,sub) ->
        cluster $
        do attribute ("label", name)
@@ -121,9 +107,10 @@ make_clustered_dot c (Sub xs ys) =
           c1 `seq` make_clustered_dot c1 sub
 
 
-make_unclustered_dot :: Int -> String -> Trie -> Dot Int
-make_unclustered_dot c pre (Sub xs ys) =
-  do forM_ ys $ \(ls,n) -> userNode (userNodeId n) [ ("label", pre ++ ls)
+make_unclustered_dot :: Int -> String -> Nodes -> Dot Int
+make_unclustered_dot c pre (Trie.Sub xs ys') =
+  do let ys = fromMaybe [] ys'
+     forM_ ys $ \(ls,n) -> userNode (userNodeId n) [ ("label", pre ++ ls)
                                                    , ("color", colors !! c)
                                                    , ("style", "filled")
                                                    ]
