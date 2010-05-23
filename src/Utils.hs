@@ -1,6 +1,8 @@
 module Utils
   ( parseFile
   , parseString
+  , Qualifier
+  , splitQualifier
   , ModName
   , splitModName
   , joinModName
@@ -45,7 +47,15 @@ imports ts          = case isImp $ snd $ break (("import" ==) . snd . snd) ts of
                         _           -> []
 
 -- | A hierarchical module name.
-type ModName        = ([String],String)
+type Qualifier      = [String]
+type ModName        = (Qualifier,String)
+
+
+-- | Convert a string name into a hierarchical name qualifier.
+splitQualifier     :: String -> Qualifier
+splitQualifier cs   = case break ('.'==) cs of
+                        (xs,_:ys)  -> xs : splitQualifier ys
+                        _          -> [cs]
 
 -- | Convert a string name into a hierarchical name.
 splitModName       :: String -> ModName
