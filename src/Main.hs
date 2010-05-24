@@ -3,11 +3,12 @@ import qualified Trie
 
 import Text.Dot
 
-import Control.Monad(when,forM_,(<=<))
+import Control.Monad(when,forM_,(<=<),guard,mplus)
 import Control.Monad.Fix(mfix)
 import Data.List(intersperse)
 import Data.Maybe(mapMaybe,isJust,fromMaybe)
 import qualified Data.IntMap as Map
+import qualified Data.IntSet as Set
 import System.Environment(getArgs)
 import System.IO(hPutStrLn,stderr)
 import System.FilePath
@@ -34,16 +35,20 @@ to_input m
 
 
 
-type Nodes    = Trie.Trie String [(String,Int)]
-type Edges    = Map.IntMap [Int]
+-- type Nodes    = Trie.Trie String [(String,Int)]
+type NodesC   = Trie.Trie String [((NodeT,String),Int)]
+type Edges    = Map.IntMap Set.IntSet
 
-graph :: Opts -> [Input] -> IO (Edges, Nodes)
+data NodeT    = ModuleNode | CollapsedNode
+                deriving (Show,Eq,Ord)
+
+graph :: Opts -> [Input] -> IO (Edges, NodesC)
 graph opts inputs = mfix $ \ ~(_,mods) ->
   -- NOTE: 'mods' is the final value of 'done' in the funciton 'loop'.
 
-  let loop :: Nodes -> Edges -> Int -> [Input] -> IO (Edges, Nodes)
+  let loop :: NodesC -> Edges -> Int -> [Input] -> IO (Edges, NodesC)
 
-      loop done es _ [] = return (es,done)
+      loop done es _ [] = return (es, collapseAll (collapse_quals opts) done)
 
       loop done es size (Module m : todo)
         | ignore done m = loop done es size todo
@@ -66,14 +71,17 @@ graph opts inputs = mfix $ \ ~(_,mods) ->
 
       add done es size m imps ms =
         let ms1     = map Module imps ++ ms
-            imp_ids = mapMaybe nodeFor imps
+            imp_ids = Set.fromList (mapMaybe nodeFor imps)
             size1   = 1 + size
-        in size1 `seq`
-            loop (insMod m size done) (Map.insert size imp_ids es) size1 ms1
+            es1     = case nodeFor m of
+                        Just n  -> Map.insertWith Set.union n imp_ids es
+                        Nothing -> es
+        in size1 `seq` loop (insMod m size done) es1 size1 ms1
 
-      nodeFor x         = lookupMod x mods
-      insMod (q,m) n t  = Trie.insert q (\xs -> (m,n) : fromMaybe [] xs) t
-      lookupMod (q,m)   = lookup m <=< Trie.lookup q
+      nodeFor x         = lookupNode x mods  -- Recursion happens here!
+      insMod (q,m) n t  = Trie.insert q (\xs -> ((ModuleNode,m),n)
+                                                          : fromMaybe [] xs) t
+      lookupMod (q,m)   = lookup (ModuleNode,m) <=< Trie.lookup q
       ignore done m     = isIgnored (ignore_mods opts) m
                        || isJust (lookupMod m done)
 
@@ -89,6 +97,42 @@ isIgnored (Trie.Sub ts _)                     (q:qs,m) =
     Nothing -> False
     Just t  -> isIgnored t (qs,m)
 
+findDelete :: (a -> Maybe b) -> [a] -> Maybe ([a],b,[a])
+findDelete p xs = search xs []
+  where search [] _ = Nothing
+        search (x : after) before =
+          case p x of
+            Just b  -> Just (before, b, after)
+            Nothing -> search after (x : before)
+
+
+lookupNode :: ModName -> NodesC -> Maybe Int
+lookupNode ([],m) (Trie.Sub _ mb) = lookup (ModuleNode,m) =<< mb
+
+lookupNode (q:qs,m) (Trie.Sub ts mb) =
+  (lookup (CollapsedNode,q) =<< mb) `mplus`
+  (lookupNode (qs,m) =<< lookup q ts)
+
+
+collapseAll :: [Qualifier] -> NodesC -> NodesC
+collapseAll qs t0 = foldr (\q t -> fromMaybe t (collapse t q)) t0 qs
+
+-- We use the Maybe type to indicate when things changed.
+collapse :: NodesC -> Qualifier -> Maybe NodesC
+collapse _ [] = return Trie.empty      -- Probably not terribly useful.
+
+collapse (Trie.Sub ts mb) [q] =
+  do let match (q1,t) = guard (q == q1) >> return t
+     (before, Trie.Sub _ (Just ((_,n) : _)), after) <- findDelete match ts
+     return $ Trie.Sub (before ++ after) $ Just $ ((CollapsedNode,q),n) :
+                                                              fromMaybe [] mb
+
+collapse (Trie.Sub ts ms) (q : qs) =
+  do let match (q1,t) = guard (q == q1) >> return t
+     (before,t,after) <- findDelete match ts
+     t1 <- collapse t qs
+     return (Trie.Sub ((q,t1) : before ++ after) ms)
+
 
 -- We use tries to group modules by directory.
 --------------------------------------------------------------------------------
@@ -97,18 +141,19 @@ isIgnored (Trie.Sub ts _)                     (q:qs,m) =
 
 -- Render edges and a trie into the dot language
 --------------------------------------------------------------------------------
-make_dot :: Bool -> (Edges,Nodes) -> String
+make_dot :: Bool -> (Edges,NodesC) -> String
 make_dot cl (es,t) =
   showDot $
   do if cl then make_clustered_dot 0 t
            else make_unclustered_dot 0 "" t >> return ()
      forM_ (Map.toList es) $ \(x,ys) ->
-                        forM_ ys $ \y -> userNodeId x .->. userNodeId y
+       forM_ (Set.toList ys) $ \y -> userNodeId x .->. userNodeId y
 
-
-make_clustered_dot :: Int -> Nodes -> Dot ()
+-- XXX: Render nodes properly
+make_clustered_dot :: Int -> NodesC -> Dot ()
 make_clustered_dot c (Trie.Sub xs ys) =
-  do forM_ (fromMaybe [] ys) $ \(ls,n) -> userNode (userNodeId n) [("label",ls)]
+  do forM_ (fromMaybe [] ys) $ \(ls,n) ->
+                             userNode (userNodeId n) [("label",show ls)]
      forM_ xs $ \(name,sub) ->
        cluster $
        do attribute ("label", name)
@@ -118,10 +163,12 @@ make_clustered_dot c (Trie.Sub xs ys) =
           c1 `seq` make_clustered_dot c1 sub
 
 
-make_unclustered_dot :: Int -> String -> Nodes -> Dot Int
+-- XXX: Render nodes properly
+-- XXX: Does collpasing make sense with the unclustered representation?
+make_unclustered_dot :: Int -> String -> NodesC -> Dot Int
 make_unclustered_dot c pre (Trie.Sub xs ys') =
   do let ys = fromMaybe [] ys'
-     forM_ ys $ \(ls,n) -> userNode (userNodeId n) [ ("label", pre ++ ls)
+     forM_ ys $ \(ls,n) -> userNode (userNodeId n) [ ("label", pre ++ show ls)
                                                    , ("color", colors !! c)
                                                    , ("style", "filled")
                                                    ]
@@ -176,6 +223,7 @@ data Opts = Opts
   , with_missing  :: Bool
   , use_clusters  :: Bool
   , ignore_mods   :: IgnoreSet
+  , collapse_quals :: [Qualifier]
   }
 
 type IgnoreSet  = Trie.Trie String IgnoreSpec
@@ -190,6 +238,7 @@ default_opts = Opts
   , with_missing  = False
   , use_clusters  = True
   , ignore_mods   = Trie.empty
+  , collapse_quals = []
   }
 
 options :: [OptDescr OptT]
@@ -211,6 +260,9 @@ options =
 
   , Option ['R'] ["remove-qual"]   (ReqArg add_ignore_qual "QUALIFIER")
     "Remove all modules that start with the given qualifier."
+
+  , Option ['c'] ["collapse"]   (ReqArg add_collapse_qual "QUALIFIER")
+    "Display modules matching the qualifier as a single node."
   ]
 
 add_current      :: OptT
@@ -242,6 +294,11 @@ add_ignore_mod s o = o { ignore_mods = ins (splitModName s) }
 add_ignore_qual :: String -> OptT
 add_ignore_qual s o = o { ignore_mods = Trie.insert (splitQualifier s)
                                           (const IgnoreAll) (ignore_mods o) }
+
+-- XXX: spot nesting
+add_collapse_qual :: String -> OptT
+add_collapse_qual s o = o { collapse_quals = splitQualifier s :
+                                                          collapse_quals o }
 
 
 
