@@ -62,7 +62,7 @@ graph opts inputs = mfix $ \ ~(_,mods) ->
                f : gs -> do when (not (null gs)) (warn opts (ambigMsg m fs))
                             (x,imps) <- parseFile f
                             add done es size x imps todo
-    
+
       loop done es size (File f : todo) =
         do (m,is) <- parseFile f
            if ignore done m
@@ -86,7 +86,7 @@ graph opts inputs = mfix $ \ ~(_,mods) ->
                        || isJust (lookupMod m done)
 
   in loop Trie.empty Map.empty 0 inputs
-  
+
 
 isIgnored :: IgnoreSet -> ModName -> Bool
 isIgnored (Trie.Sub _ (Just IgnoreAll))       _        = True
@@ -149,11 +149,17 @@ make_dot cl (es,t) =
      forM_ (Map.toList es) $ \(x,ys) ->
        forM_ (Set.toList ys) $ \y -> userNodeId x .->. userNodeId y
 
--- XXX: Render nodes properly
 make_clustered_dot :: Int -> NodesC -> Dot ()
 make_clustered_dot c (Trie.Sub xs ys) =
-  do forM_ (fromMaybe [] ys) $ \(ls,n) ->
-                             userNode (userNodeId n) [("label",show ls)]
+  do forM_ (fromMaybe [] ys) $ \((t,ls),n) ->
+       userNode (userNodeId n) $
+       ("label",ls) :
+       case t of
+         CollapsedNode -> [ ("shape","box")
+                          , ("fillcolor",colors !! c)
+                          , ("style","filled")
+                          ]
+         _             -> []
      forM_ xs $ \(name,sub) ->
        cluster $
        do attribute ("label", name)
@@ -163,15 +169,16 @@ make_clustered_dot c (Trie.Sub xs ys) =
           c1 `seq` make_clustered_dot c1 sub
 
 
--- XXX: Render nodes properly
--- XXX: Does collpasing make sense with the unclustered representation?
 make_unclustered_dot :: Int -> String -> NodesC -> Dot Int
 make_unclustered_dot c pre (Trie.Sub xs ys') =
   do let ys = fromMaybe [] ys'
-     forM_ ys $ \(ls,n) -> userNode (userNodeId n) [ ("label", pre ++ show ls)
-                                                   , ("color", colors !! c)
-                                                   , ("style", "filled")
-                                                   ]
+     forM_ ys $ \((t,ls),n) ->
+        userNode (userNodeId n) $
+            (if t == CollapsedNode then [("shape","box")] else [])
+            ++ [ ("label", pre ++ ls)
+              , ("fillcolor", colors !! c)
+              , ("style", "filled")
+              ]
      let c1 = if null ys then c else c + 1
      c1 `seq` loop xs c1
   where
