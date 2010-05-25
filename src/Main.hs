@@ -3,10 +3,10 @@ import qualified Trie
 
 import Text.Dot
 
-import Control.Monad(when,forM_,(<=<),guard,mplus)
+import Control.Monad(when,forM_,(<=<),guard,mplus,msum)
 import Control.Monad.Fix(mfix)
 import Data.List(intersperse)
-import Data.Maybe(mapMaybe,isJust,fromMaybe)
+import Data.Maybe(mapMaybe,isJust,fromMaybe,listToMaybe)
 import qualified Data.IntMap as Map
 import qualified Data.IntSet as Set
 import System.Environment(getArgs)
@@ -123,9 +123,12 @@ collapse _ [] = return Trie.empty      -- Probably not terribly useful.
 
 collapse (Trie.Sub ts mb) [q] =
   do let match (q1,t) = guard (q == q1) >> return t
-     (before, Trie.Sub _ (Just ((_,n) : _)), after) <- findDelete match ts
+     (before, t, after) <- findDelete match ts
+     n <- getFirst t
      return $ Trie.Sub (before ++ after) $ Just $ ((CollapsedNode,q),n) :
                                                               fromMaybe [] mb
+  where getFirst (Trie.Sub ts1 ms) =
+          msum (fmap snd (listToMaybe =<< ms) : map (getFirst . snd) ts1)
 
 collapse (Trie.Sub ts ms) (q : qs) =
   do let match (q1,t) = guard (q == q1) >> return t
