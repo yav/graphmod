@@ -123,7 +123,7 @@ collapse _ [] = return Trie.empty      -- Probably not terribly useful.
 
 collapse (Trie.Sub ts mb) [q] =
   do n <- getFirst =<< Map.lookup q ts
-     return $ Trie.Sub Map.empty $ Just
+     return $ Trie.Sub (Map.delete q ts) $ Just
                                  $ ((CollapsedNode,q),n) : fromMaybe [] mb
   where getFirst (Trie.Sub ts1 ms) =
           msum (fmap snd (listToMaybe =<< ms) : map getFirst (Map.elems ts1))
