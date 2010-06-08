@@ -16,13 +16,21 @@ import System.FilePath
 import System.Console.GetOpt
 import Numeric(showHex)
 
+import Paths_graphmod (version)
+import Data.Version (showVersion)
+
 main :: IO ()
 main = do xs <- getArgs
           let (fs, ms, errs) = getOpt Permute options xs
           case errs of
-            [] -> do let opts = foldr ($) default_opts fs
-                     g <- graph (add_current opts) (map to_input ms)
+            [] | show_version opts ->
+                  putStrLn ("graphmod " ++ showVersion version)
+
+               | otherwise ->
+                  do g <- graph (add_current opts) (map to_input ms)
                      putStrLn (make_dot (use_clusters opts) g)
+              where opts = foldr ($) default_opts fs
+
             _ -> hPutStrLn stderr $ usageInfo "mods" options
 
 
@@ -231,6 +239,7 @@ data Opts = Opts
   , use_clusters  :: Bool
   , ignore_mods   :: IgnoreSet
   , collapse_quals :: Trie.Trie String ()
+  , show_version  :: Bool
   }
 
 type IgnoreSet  = Trie.Trie String IgnoreSpec
@@ -246,6 +255,7 @@ default_opts = Opts
   , use_clusters  = True
   , ignore_mods   = Trie.empty
   , collapse_quals = Trie.empty
+  , show_version    = False
   }
 
 options :: [OptDescr OptT]
@@ -270,6 +280,9 @@ options =
 
   , Option ['c'] ["collapse"]   (ReqArg add_collapse_qual "QUALIFIER")
     "Display modules matching the qualifier as a single node."
+
+  , Option ['v'] ["version"]   (NoArg set_show_version)
+    "Display the current version."
   ]
 
 add_current      :: OptT
@@ -279,6 +292,9 @@ add_current o     = case inc_dirs o of
 
 set_quiet        :: OptT
 set_quiet o       = o { quiet = True }
+
+set_show_version :: OptT
+set_show_version o = o { show_version = True }
 
 set_all          :: OptT
 set_all o         = o { with_missing = True }
