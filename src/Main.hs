@@ -31,7 +31,8 @@ main = do xs <- getArgs
                      putStrLn (make_dot (use_clusters opts) g)
               where opts = foldr ($) default_opts fs
 
-            _ -> hPutStrLn stderr $ usageInfo "mods" options
+            _ -> hPutStrLn stderr $
+                  usageInfo "usage: graphmod MODULES/PATHS" options
 
 
 data Input  = File FilePath | Module ModName
