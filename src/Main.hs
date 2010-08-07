@@ -19,8 +19,6 @@ import Numeric(showHex)
 import Paths_graphmod (version)
 import Data.Version (showVersion)
 
-import Debug.Trace
-
 main :: IO ()
 main = do xs <- getArgs
           let (fs, ms, errs) = getOpt Permute options xs
@@ -112,12 +110,24 @@ isIgnored (Trie.Sub ts _)                     (q:qs,m) =
     Just t  -> isIgnored t (qs,m)
 
 lookupNode :: ModName -> NodesC -> Maybe Int
-lookupNode ([],m) (Trie.Sub _ mb) = lookup (ModuleNode,m) =<< mb
+lookupNode ([],m) (Trie.Sub _ mb) = lookupBy (containsModule m) =<< mb
 
 lookupNode (q:qs,m) (Trie.Sub ts mb) =
-  (do ns <- mb
-      listToMaybe $ [ n | ((CollapsedNode _, q1), n) <- ns, q == q1 ]) `mplus`
+  (lookupBy (isCollapsed q) =<< mb) `mplus`
   (lookupNode (qs,m) =<< Map.lookup q ts)
+
+containsModule :: String -> (NodeT, String) -> Bool
+containsModule q (ModuleNode, q1)             = q == q1
+containsModule q (CollapsedNode withMod, q1)  = withMod && q == q1
+
+isCollapsed :: String -> (NodeT, String) -> Bool
+isCollapsed q (CollapsedNode _, q1) = q == q1
+isCollapsed _ (ModuleNode, _)       = False
+
+lookupBy :: (a -> Bool) -> [(a,b)] -> Maybe b
+lookupBy p xs = listToMaybe [ y | (x,y) <- xs, p x ]
+
+
 
 
 -- XXX: We could combine collapseAll and collapse into a single pass
@@ -126,7 +136,7 @@ collapseAll :: NodesC -> Trie.Trie String Bool -> NodesC
 collapseAll t0 = foldr (\q t -> fromMaybe t (collapse t q)) t0 . toList
   where
   toList (Trie.Sub _ (Just x))  = return ([], x)
-  toList (Trie.Sub as _)        = do (q,t)  <- Map.toList as
+  toList (Trie.Sub as Nothing)  = do (q,t)  <- Map.toList as
                                      (qs,x) <- toList t
                                      return (q:qs, x)
 
@@ -135,24 +145,17 @@ collapse :: NodesC -> (Qualifier,Bool) -> Maybe NodesC
 collapse _ ([],_) = return Trie.empty      -- Probably not terribly useful.
 
 collapse (Trie.Sub ts mb) ([q],alsoMod) =
-  do (n,withMod) <- fmap (\x -> (x,True)) tryMod
-             `mplus` fmap (\x -> (x,False)) (getFirst =<< Map.lookup q ts)
+  do (n,withMod) <- fmap (\x -> (x,True)) useMod
+--            `mplus` fmap (\x -> (x,False)) (getFirst =<< Map.lookup q ts)
 
-     () <- trace ("For path " ++ q ++ ", withMod = " ++ show withMod) $ return ()
      return $ Trie.Sub (Map.delete q ts)
             $ Just $ ((CollapsedNode withMod,q),n)
                    : if withMod then others else allNodes
 
-  where allNodes = fromMaybe [] mb
-
-        isMod (ModuleNode,q1)         = q == q1
-        isMod (CollapsedNode True,q1) = q == q1
-        isMod _                       = False
-
-        (thisNode,others) = partition (isMod . fst) allNodes
-
-        tryMod = do guard alsoMod
-                    listToMaybe (map snd thisNode)
+  where allNodes          = fromMaybe [] mb
+        (thisNode,others) = partition (containsModule q . fst) allNodes
+        useMod            = do guard alsoMod
+                               listToMaybe (map snd thisNode)
 
         getFirst (Trie.Sub ts1 ms) =
           msum (fmap snd (listToMaybe =<< ms) : map getFirst (Map.elems ts1))
