@@ -8,8 +8,8 @@ homepage:       http://github.com/yav/graphmod
 build-type:     Simple
 cabal-version:  >= 1.2
 synopsis:       Present the module dependencies of a program as a "dot" graph.
-description:    This package contains a program that can compute "dot" graphs
-                from the dependencies between a number of Haskell modules.
+description:    This package contains a program that computes "dot" graphs
+                from the dependencies of a number of Haskell modules.
 category:       Development
 
 executable graphmod
