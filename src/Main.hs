@@ -185,22 +185,22 @@ make_dot cl (es,t) =
 
 
 
-pickLabel l (CollapsedNode False) = [("label", l)]
-pickLabel l (CollapsedNode True)  = [("label", l ++ " *")]
-pickLabel l ModuleNode            = [("label", l)]
-
-pickShape (CollapsedNode _ ) = [ ("shape", "folder") ]
-pickShape ModuleNode         = []
-
-
 make_clustered_dot :: Int -> NodesC -> Dot ()
 make_clustered_dot c (Trie.Sub xs ys) =
   do forM_ (fromMaybe [] ys) $ \((t,ls),n) ->
        userNode (userNodeId n) $
-        pickLabel ls t ++ pickShape t ++
+       [ ("label",ls) ] ++
        case t of
-         CollapsedNode _ -> [ ("color",colors !! c), ("style","filled") ]
-         ModuleNode      -> []
+         CollapsedNode False -> [ ("shape", "box")
+                                , ("style","filled")
+                                , ("color", colors !! c)
+                                ]
+         CollapsedNode True  -> [ ("shape", "box")
+                                , ("fillcolor", colors !! c)
+                                , ("style","filled")
+                                ]
+         ModuleNode          -> []
+
      forM_ (Map.toList xs) $ \(name,sub) ->
        cluster $
        do attribute ("label", name)
@@ -215,10 +215,16 @@ make_unclustered_dot c pre (Trie.Sub xs ys') =
   do let ys = fromMaybe [] ys'
      forM_ ys $ \((t,ls),n) ->
         userNode (userNodeId n) $
-            pickLabel (pre ++ ls) t ++ pickShape t
-            ++ [ ("fillcolor", colors !! c)
-               , ("style", "filled")
-               ]
+          let col = colors !! c in
+              [ ("fillcolor", col)
+              , ("style", "filled")
+              , ("label", pre ++ ls)
+              ] ++
+            case t of
+              CollapsedNode False -> [ ("shape", "box"), ("color", col) ]
+              CollapsedNode True  -> [ ("shape", "box") ]
+              ModuleNode          -> []
+      
      let c1 = if null ys then c else c + 1
      c1 `seq` loop (Map.toList xs) c1
   where
