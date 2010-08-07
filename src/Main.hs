@@ -28,7 +28,8 @@ main = do xs <- getArgs
 
                | otherwise ->
                   do g <- graph (add_current opts) (map to_input ms)
-                     putStrLn (make_dot (use_clusters opts) g)
+                     putStrLn (make_dot (color_scheme opts)
+                                                      (use_clusters opts) g)
               where opts = foldr ($) default_opts fs
 
             _ -> hPutStrLn stderr $
@@ -48,6 +49,7 @@ to_input m
 -- type Nodes    = Trie.Trie String [(String,Int)]
 type NodesC   = Trie.Trie String [((NodeT,String),Int)]
 type Edges    = IMap.IntMap Set.IntSet
+
 
 data NodeT    = ModuleNode
               | CollapsedNode Bool  -- ^ indicates if it contains module too
@@ -175,28 +177,29 @@ collapse (Trie.Sub ts ms) (q : qs,x) =
 
 -- Render edges and a trie into the dot language
 --------------------------------------------------------------------------------
-make_dot :: Bool -> (Edges,NodesC) -> String
-make_dot cl (es,t) =
+make_dot :: Int -> Bool -> (Edges,NodesC) -> String
+make_dot col cl (es,t) =
   showDot $
-  do if cl then make_clustered_dot 0 t
-           else make_unclustered_dot 0 "" t >> return ()
+  do if cl then make_clustered_dot (colors col) t
+           else make_unclustered_dot (colors col) "" t >> return ()
      forM_ (IMap.toList es) $ \(x,ys) ->
        forM_ (Set.toList ys) $ \y -> userNodeId x .->. userNodeId y
 
 
 
-make_clustered_dot :: Int -> NodesC -> Dot ()
+make_clustered_dot :: [Color] -> NodesC -> Dot ()
 make_clustered_dot c (Trie.Sub xs ys) =
-  do forM_ (fromMaybe [] ys) $ \((t,ls),n) ->
+  do let col = renderColor (head c)
+     forM_ (fromMaybe [] ys) $ \((t,ls),n) ->
        userNode (userNodeId n) $
        [ ("label",ls) ] ++
        case t of
          CollapsedNode False -> [ ("shape", "box")
                                 , ("style","filled")
-                                , ("color", colors !! c)
+                                , ("color", col)
                                 ]
          CollapsedNode True  -> [ ("shape", "box")
-                                , ("fillcolor", colors !! c)
+                                , ("fillcolor", col)
                                 , ("style","filled")
                                 ]
          ModuleNode          -> []
@@ -204,18 +207,17 @@ make_clustered_dot c (Trie.Sub xs ys) =
      forM_ (Map.toList xs) $ \(name,sub) ->
        cluster $
        do attribute ("label", name)
-          attribute ("color" , colors !! c)
+          attribute ("color" , col)
           attribute ("style", "filled")
-          let c1 = c + 1
-          c1 `seq` make_clustered_dot c1 sub
+          make_clustered_dot (tail c) sub
 
 
-make_unclustered_dot :: Int -> String -> NodesC -> Dot Int
+make_unclustered_dot :: [Color] -> String -> NodesC -> Dot [Color]
 make_unclustered_dot c pre (Trie.Sub xs ys') =
-  do let ys = fromMaybe [] ys'
+  do let col = renderColor (head c)
+     let ys = fromMaybe [] ys'
      forM_ ys $ \((t,ls),n) ->
         userNode (userNodeId n) $
-          let col = colors !! c in
               [ ("fillcolor", col)
               , ("style", "filled")
               , ("label", pre ++ ls)
@@ -225,7 +227,7 @@ make_unclustered_dot c pre (Trie.Sub xs ys') =
               CollapsedNode True  -> [ ("shape", "box") ]
               ModuleNode          -> []
       
-     let c1 = if null ys then c else c + 1
+     let c1 = if null ys then c else tail c
      c1 `seq` loop (Map.toList xs) c1
   where
   loop ((name,sub):ms) c1 =
@@ -237,19 +239,30 @@ make_unclustered_dot c pre (Trie.Sub xs ys') =
 
 type Color = (Int,Int,Int)
 
--- XXX: generate all?
-colors :: [String]
-colors = map col (ys1 ++ ys2) ++ repeat "#cccccc"
-  where
-  xs1  :: [Color]
-  xs1   = [ (1,0,1), (2,0,2), (3,0,3), (2,1,2), (3,1,3), (3,2,3) ]
-  xs2   = map rotR xs1
-  xs3   = map rotR xs2
-  ys1   = xs1 ++ xs2 ++ xs3
-  ys2   = map compl (reverse ys1)
+colors :: Int -> [Color]
+colors n = light_dark $ drop n $ cycle colorses
 
-  col (x,y,z)   = '#' : (showHex (mk x) $ showHex (mk y) $ showHex (mk z) "")
-  mk n          = 0xFF - n * 0x33
+renderColor :: Color -> String
+renderColor (x,y,z) = '#' : showHex (mk x) (showHex (mk y) (showHex (mk z) ""))
+  where mk n = 0xFF - n * 0x33
+
+
+light_dark :: [[a]] -> [a]
+light_dark (xs : ys : zs) = xs ++ reverse ys ++ light_dark zs
+light_dark [x]            = x
+light_dark []             = []
+
+
+
+colorses :: [[Color]]
+colorses = [green, cyan, blue, magenta, red, yellow]
+  where
+  red :: [Color]
+  red   = [ (0,1,1), (0,2,2), (0,3,3), (1,2,2), (1,3,3), (2,3,3) ]
+  green = map rotR red
+  blue  = map rotR green
+  [cyan,magenta,yellow] = map (map compl . reverse) [red, green, blue]
+
   rotR (x,y,z)  = (z,x,y)
   compl (x,y,z) = (3-x,3-y,3-z)
 
@@ -281,6 +294,7 @@ data Opts = Opts
     -- For example, "True" says that A.B.C would collapse not only A.B.C.*
     -- but also the module A.B.C, if it exists.
   , show_version  :: Bool
+  , color_scheme  :: Int
   }
 
 type IgnoreSet  = Trie.Trie String IgnoreSpec
@@ -290,13 +304,14 @@ type OptT = Opts -> Opts
 
 default_opts :: Opts
 default_opts = Opts
-  { inc_dirs      = []
-  , quiet         = False
-  , with_missing  = False
-  , use_clusters  = True
-  , ignore_mods   = Trie.empty
-  , collapse_quals = Trie.empty
+  { inc_dirs        = []
+  , quiet           = False
+  , with_missing    = False
+  , use_clusters    = True
+  , ignore_mods     = Trie.empty
+  , collapse_quals  = Trie.empty
   , show_version    = False
+  , color_scheme    = 0
   }
 
 options :: [OptDescr OptT]
@@ -324,6 +339,9 @@ options =
 
   , Option ['C'] ["collapse-module"] (ReqArg (add_collapse_qual True) "NAME")
     "Display modules NAME and NAME.* as one node"
+
+  , Option ['s'] ["colors"] (ReqArg add_color_scheme "NUM")
+    "Choose a color scheme number (0-5)"
 
   , Option ['v'] ["version"]   (NoArg set_show_version)
     "Show the current version."
@@ -361,6 +379,11 @@ add_ignore_mod s o = o { ignore_mods = ins (splitModName s) }
 add_ignore_qual :: String -> OptT
 add_ignore_qual s o = o { ignore_mods = Trie.insert (splitQualifier s)
                                           (const IgnoreAll) (ignore_mods o) }
+
+add_color_scheme :: String -> OptT
+add_color_scheme n o = o { color_scheme = case reads n of
+                                            [(x,"")] -> x
+                                            _ -> color_scheme default_opts }
 
 add_collapse_qual :: Bool -> String -> OptT
 add_collapse_qual m s o = o { collapse_quals = upd (splitQualifier s)
