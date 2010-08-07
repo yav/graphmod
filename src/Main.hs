@@ -3,9 +3,9 @@ import qualified Trie
 
 import Text.Dot
 
-import Control.Monad(when,forM_,(<=<),mplus,msum)
+import Control.Monad(when,forM_,(<=<),mplus,msum,guard)
 import Control.Monad.Fix(mfix)
-import Data.List(intersperse)
+import Data.List(intersperse,partition)
 import Data.Maybe(mapMaybe,isJust,fromMaybe,listToMaybe)
 import qualified Data.IntMap as IMap
 import qualified Data.Map    as Map
@@ -18,6 +18,8 @@ import Numeric(showHex)
 
 import Paths_graphmod (version)
 import Data.Version (showVersion)
+
+import Debug.Trace
 
 main :: IO ()
 main = do xs <- getArgs
@@ -49,7 +51,8 @@ to_input m
 type NodesC   = Trie.Trie String [((NodeT,String),Int)]
 type Edges    = IMap.IntMap Set.IntSet
 
-data NodeT    = ModuleNode | CollapsedNode
+data NodeT    = ModuleNode
+              | CollapsedNode Bool  -- ^ indicates if it contains module too
                 deriving (Show,Eq,Ord)
 
 graph :: Opts -> [Input] -> IO (Edges, NodesC)
@@ -112,35 +115,54 @@ lookupNode :: ModName -> NodesC -> Maybe Int
 lookupNode ([],m) (Trie.Sub _ mb) = lookup (ModuleNode,m) =<< mb
 
 lookupNode (q:qs,m) (Trie.Sub ts mb) =
-  (lookup (CollapsedNode,q) =<< mb) `mplus`
+  (do ns <- mb
+      listToMaybe $ [ n | ((CollapsedNode _, q1), n) <- ns, q == q1 ]) `mplus`
   (lookupNode (qs,m) =<< Map.lookup q ts)
 
 
 -- XXX: We could combine collapseAll and collapse into a single pass
 -- to avoid traversing form the root each time.
-collapseAll :: NodesC -> Trie.Trie String () -> NodesC
+collapseAll :: NodesC -> Trie.Trie String Bool -> NodesC
 collapseAll t0 = foldr (\q t -> fromMaybe t (collapse t q)) t0 . toList
   where
-  toList (Trie.Sub _ (Just _))  = return []
-  toList (Trie.Sub as _)        = do (q,t) <- Map.toList as
-                                     qs <- toList t
-                                     return (q:qs)
+  toList (Trie.Sub _ (Just x))  = return ([], x)
+  toList (Trie.Sub as _)        = do (q,t)  <- Map.toList as
+                                     (qs,x) <- toList t
+                                     return (q:qs, x)
 
--- We use the Maybe type to indicate when things changed.
-collapse :: NodesC -> Qualifier -> Maybe NodesC
-collapse _ [] = return Trie.empty      -- Probably not terribly useful.
+-- NOTE: We use the Maybe type to indicate when things changed.
+collapse :: NodesC -> (Qualifier,Bool) -> Maybe NodesC
+collapse _ ([],_) = return Trie.empty      -- Probably not terribly useful.
 
-collapse (Trie.Sub ts mb) [q] =
-  do n <- getFirst =<< Map.lookup q ts
-     return $ Trie.Sub (Map.delete q ts) $ Just
-                                 $ ((CollapsedNode,q),n) : fromMaybe [] mb
-  where getFirst (Trie.Sub ts1 ms) =
+collapse (Trie.Sub ts mb) ([q],alsoMod) =
+  do (n,withMod) <- fmap (\x -> (x,True)) tryMod
+             `mplus` fmap (\x -> (x,False)) (getFirst =<< Map.lookup q ts)
+
+     () <- trace ("For path " ++ q ++ ", withMod = " ++ show withMod) $ return ()
+     return $ Trie.Sub (Map.delete q ts)
+            $ Just $ ((CollapsedNode withMod,q),n)
+                   : if withMod then others else allNodes
+
+  where allNodes = fromMaybe [] mb
+
+        isMod (ModuleNode,q1)         = q == q1
+        isMod (CollapsedNode True,q1) = q == q1
+        isMod _                       = False
+
+        (thisNode,others) = partition (isMod . fst) allNodes
+
+        tryMod = do guard alsoMod
+                    listToMaybe (map snd thisNode)
+
+        getFirst (Trie.Sub ts1 ms) =
           msum (fmap snd (listToMaybe =<< ms) : map getFirst (Map.elems ts1))
 
-collapse (Trie.Sub ts ms) (q : qs) =
+collapse (Trie.Sub ts ms) (q : qs,x) =
   do t <- Map.lookup q ts
-     t1 <- collapse t qs
+     t1 <- collapse t (qs,x)
      return (Trie.Sub (Map.insert q t1 ts) ms)
+
+
 
 
 -- We use tries to group modules by directory.
@@ -158,17 +180,24 @@ make_dot cl (es,t) =
      forM_ (IMap.toList es) $ \(x,ys) ->
        forM_ (Set.toList ys) $ \y -> userNodeId x .->. userNodeId y
 
+
+
+pickLabel l (CollapsedNode False) = [("label", l)]
+pickLabel l (CollapsedNode True)  = [("label", l ++ " *")]
+pickLabel l ModuleNode            = [("label", l)]
+
+pickShape (CollapsedNode _ ) = [ ("shape", "folder") ]
+pickShape ModuleNode         = []
+
+
 make_clustered_dot :: Int -> NodesC -> Dot ()
 make_clustered_dot c (Trie.Sub xs ys) =
   do forM_ (fromMaybe [] ys) $ \((t,ls),n) ->
        userNode (userNodeId n) $
-       ("label",ls) :
+        pickLabel ls t ++ pickShape t ++
        case t of
-         CollapsedNode -> [ ("shape","box")
-                          , ("color",colors !! c)
-                          , ("style","filled")
-                          ]
-         _             -> []
+         CollapsedNode _ -> [ ("color",colors !! c), ("style","filled") ]
+         ModuleNode      -> []
      forM_ (Map.toList xs) $ \(name,sub) ->
        cluster $
        do attribute ("label", name)
@@ -183,11 +212,10 @@ make_unclustered_dot c pre (Trie.Sub xs ys') =
   do let ys = fromMaybe [] ys'
      forM_ ys $ \((t,ls),n) ->
         userNode (userNodeId n) $
-            (if t == CollapsedNode then [("shape","box")] else [])
-            ++ [ ("label", pre ++ ls)
-              , ("fillcolor", colors !! c)
-              , ("style", "filled")
-              ]
+            pickLabel (pre ++ ls) t ++ pickShape t
+            ++ [ ("fillcolor", colors !! c)
+               , ("style", "filled")
+               ]
      let c1 = if null ys then c else c + 1
      c1 `seq` loop (Map.toList xs) c1
   where
@@ -239,7 +267,10 @@ data Opts = Opts
   , with_missing  :: Bool
   , use_clusters  :: Bool
   , ignore_mods   :: IgnoreSet
-  , collapse_quals :: Trie.Trie String ()
+  , collapse_quals :: Trie.Trie String Bool
+    -- ^ The "Bool" tells us if we should collapse modules as well.
+    -- For example, "True" says that A.B.C would collapse not only A.B.C.*
+    -- but also the module A.B.C, if it exists.
   , show_version  :: Bool
   }
 
@@ -325,7 +356,7 @@ add_collapse_qual s o = o { collapse_quals = upd (splitQualifier s)
 
   where
   upd _ t@(Trie.Sub _ (Just _)) = t
-  upd [] _                      = Trie.Sub Map.empty (Just ())
+  upd [] _                      = Trie.Sub Map.empty (Just True)
   upd (q:qs) (Trie.Sub as _)    = Trie.Sub (Map.alter add q as) Nothing
     where add j = Just $ upd qs $ fromMaybe Trie.empty j
 
