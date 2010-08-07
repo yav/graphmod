@@ -146,7 +146,7 @@ collapse _ ([],_) = return Trie.empty      -- Probably not terribly useful.
 
 collapse (Trie.Sub ts mb) ([q],alsoMod) =
   do (n,withMod) <- fmap (\x -> (x,True)) useMod
---            `mplus` fmap (\x -> (x,False)) (getFirst =<< Map.lookup q ts)
+            `mplus` fmap (\x -> (x,False)) (getFirst =<< Map.lookup q ts)
 
      return $ Trie.Sub (Map.delete q ts)
             $ Just $ ((CollapsedNode withMod,q),n)
@@ -296,28 +296,31 @@ default_opts = Opts
 options :: [OptDescr OptT]
 options =
   [ Option ['q'] ["quiet"] (NoArg set_quiet)
-    "Do not show warnings."
+    "Do not show warnings"
 
   , Option ['i'] []        (ReqArg add_inc "DIR")
-    "Add a search directory."
+    "Add a search directory"
 
   , Option ['a'] ["all"]   (NoArg set_all)
-    "Add nodes for missing modules."
+    "Add nodes for missing modules"
 
   , Option []    ["no-cluster"] (NoArg set_no_cluster)
-    "Do not cluster directories."
+    "Do not cluster directories"
 
-  , Option ['r'] ["remove-module"] (ReqArg add_ignore_mod "MODULE")
-    "Remove a module from the graph."
+  , Option ['r'] ["remove-module"] (ReqArg add_ignore_mod "NAME")
+    "Do not display module NAME"
 
-  , Option ['R'] ["remove-qual"]   (ReqArg add_ignore_qual "QUALIFIER")
-    "Remove all modules that start with the given qualifier."
+  , Option ['R'] ["remove-qual"]   (ReqArg add_ignore_qual "NAME")
+    "Do not display modules NAME.*"
 
-  , Option ['c'] ["collapse"]   (ReqArg add_collapse_qual "QUALIFIER")
-    "Display modules matching the qualifier as a single node."
+  , Option ['c'] ["collapse"]   (ReqArg (add_collapse_qual False) "NAME")
+    "Display modules NAME.* as one node"
+
+  , Option ['C'] ["collapse-module"] (ReqArg (add_collapse_qual True) "NAME")
+    "Display modules NAME and NAME.* as one node"
 
   , Option ['v'] ["version"]   (NoArg set_show_version)
-    "Display the current version."
+    "Show the current version."
   ]
 
 add_current      :: OptT
@@ -353,13 +356,14 @@ add_ignore_qual :: String -> OptT
 add_ignore_qual s o = o { ignore_mods = Trie.insert (splitQualifier s)
                                           (const IgnoreAll) (ignore_mods o) }
 
-add_collapse_qual :: String -> OptT
-add_collapse_qual s o = o { collapse_quals = upd (splitQualifier s)
+add_collapse_qual :: Bool -> String -> OptT
+add_collapse_qual m s o = o { collapse_quals = upd (splitQualifier s)
                                                       (collapse_quals o) }
 
   where
+  upd [] (Trie.Sub xs (Just _)) = Trie.Sub xs (Just m)
   upd _ t@(Trie.Sub _ (Just _)) = t
-  upd [] _                      = Trie.Sub Map.empty (Just True)
+  upd [] _                      = Trie.Sub Map.empty (Just m)
   upd (q:qs) (Trie.Sub as _)    = Trie.Sub (Map.alter add q as) Nothing
     where add j = Just $ upd qs $ fromMaybe Trie.empty j
 
