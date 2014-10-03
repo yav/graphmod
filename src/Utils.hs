@@ -11,7 +11,7 @@ module Utils
   , suffixes
   ) where
 
-import Language.Haskell.Lexer(lexerPass1,Token(..),PosToken)
+import Language.Haskell.Lexer(lexerPass1,Token(..),PosToken,line)
 
 import Data.Maybe(catMaybes)
 import Data.List(intersperse,isPrefixOf)
@@ -25,7 +25,29 @@ parseFile f         = (parseString . get_text) `fmap` readFile f
 
 -- | Get the imports from a string that represents a program.
 parseString        :: String -> (ModName,[ModName])
-parseString         = parse . lexerPass1
+parseString         = parse . dropApproxCPP . lexerPass1
+
+dropApproxCPP :: [PosToken] -> [PosToken]
+
+ -- this is some artifact of the lexer
+dropApproxCPP ((_, (_,"")) : more) = dropApproxCPP more
+
+dropApproxCPP ((Varsym, (_,"#")) : (_, (pos,tok)) : more)
+  | tok `elem` [ "if", "ifdef", "ifndef" ] = dropToEndif more
+  | tok == "include" = dropToEOL more
+  where
+  dropToEndif ((Varsym, (_,"#")) : (_, (_,"endif")) : rest)
+                         = dropApproxCPP rest
+  dropToEndif (_ : rest) = dropToEndif rest
+  dropToEndif []         = []
+
+  dropToEOL ((_, (pos1,_)) : rest)
+    | line pos == line pos1 = dropToEOL rest
+  dropToEOL xs  = dropApproxCPP xs
+
+dropApproxCPP (x : xs) = x : dropApproxCPP xs
+dropApproxCPP []       = []
+
 
 isImp              :: [PosToken] -> Maybe (String, [PosToken])
 isImp (_ : (Conid, (_,x)) : xs)   = Just (x,xs)
@@ -37,7 +59,7 @@ isImp (_ : (Varid,_) : (Qconid, (_,x)) : xs)  = Just (x,xs)
 isImp _ = Nothing
 
 parse              :: [PosToken] -> (ModName,[ModName])
-parse (_ : (Reservedid,(_,"module")) : (_,(_,m)) : is) =
+parse ((Reservedid,(_,"module")) : (_,(_,m)) : is) =
                                                   (splitModName m,imports is)
 parse is            = (([],"Main"),imports is)
 
