@@ -56,7 +56,7 @@ data NodeT    = ModuleNode
                 deriving (Show,Eq,Ord)
 
 graph :: Opts -> [Input] -> IO (Edges, NodesC)
-graph opts inputs = mfix $ \ ~(_,mods) ->
+graph opts inputs = fmap maybePrune $ mfix $ \ ~(_,mods) ->
   -- NOTE: 'mods' is the final value of 'done' in the funciton 'loop'.
 
   let nodeFor x         = lookupNode x mods  -- Recursion happens here!
@@ -101,6 +101,33 @@ graph opts inputs = mfix $ \ ~(_,mods) ->
 
   in loop Trie.empty IMap.empty 0 inputs
 
+  where
+  maybePrune (es,ns) = if prune_edges opts then (pruneEdges es, ns)
+                                           else (es,ns)
+
+pruneEdges :: Edges -> Edges
+pruneEdges es = fmap (prune [] . Set.toList) es
+  where
+  -- add nodes that are reachable in one more step than the given set
+  step :: Set.IntSet -> Set.IntSet
+  step      = Set.unions . mapMaybe (`IMap.lookup` es) . Set.toList
+
+  -- compute closure using a naive fix-point
+  reach g   = let g' = fmap (\ns -> Set.union ns (step ns)) g
+              in if g == g' then g else reach g'
+  reachable = reach es
+
+  x `reachableFrom` y = case IMap.lookup y reachable of
+                          Just rs -> x `Set.member` rs
+                          Nothing -> False
+
+  x `reachableFromOneOf` ys = any (x `reachableFrom`) ys
+
+  prune done []                   = Set.fromList done
+  prune done (x : xs)
+    | x `reachableFromOneOf` done = prune done xs
+    | x `reachableFromOneOf` xs   = prune done xs
+    | otherwise                   = prune (x : done) xs
 
 isIgnored :: IgnoreSet -> ModName -> Bool
 isIgnored (Trie.Sub _ (Just IgnoreAll))       _        = True
@@ -295,6 +322,7 @@ data Opts = Opts
     -- but also the module A.B.C, if it exists.
   , show_version  :: Bool
   , color_scheme  :: Int
+  , prune_edges   :: Bool
   }
 
 type IgnoreSet  = Trie.Trie String IgnoreSpec
@@ -312,6 +340,7 @@ default_opts = Opts
   , collapse_quals  = Trie.empty
   , show_version    = False
   , color_scheme    = 0
+  , prune_edges     = False
   }
 
 options :: [OptDescr OptT]
@@ -339,6 +368,9 @@ options =
 
   , Option ['C'] ["collapse-module"] (ReqArg (add_collapse_qual True) "NAME")
     "Display modules NAME and NAME.* as one node"
+
+  , Option ['p'] ["prune-edges"] (NoArg set_prune)
+    "Prune edges."
 
   , Option ['s'] ["colors"] (ReqArg add_color_scheme "NUM")
     "Choose a color scheme number (0-5)"
@@ -396,4 +428,5 @@ add_collapse_qual m s o = o { collapse_quals = upd (splitQualifier s)
   upd (q:qs) (Trie.Sub as _)    = Trie.Sub (Map.alter add q as) Nothing
     where add j = Just $ upd qs $ fromMaybe Trie.empty j
 
-
+set_prune :: OptT
+set_prune o = o { prune_edges = True }
