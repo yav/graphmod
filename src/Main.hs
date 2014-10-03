@@ -28,7 +28,7 @@ main = do xs <- getArgs
 
                | otherwise ->
                   do g <- graph (add_current opts) (map to_input ms)
-                     putStrLn (make_dot (color_scheme opts)
+                     putStrLn (make_dot (graph_size opts) (color_scheme opts)
                                                       (use_clusters opts) g)
               where opts = foldr ($) default_opts fs
 
@@ -204,10 +204,12 @@ collapse (Trie.Sub ts ms) (q : qs,x) =
 
 -- Render edges and a trie into the dot language
 --------------------------------------------------------------------------------
-make_dot :: Int -> Bool -> (Edges,NodesC) -> String
-make_dot col cl (es,t) =
+make_dot :: String -> Int -> Bool -> (Edges,NodesC) -> String
+make_dot sz col cl (es,t) =
   showDot $
-  do if cl then make_clustered_dot (colors col) t
+  do attribute ("size", sz)
+     attribute ("ratio", "fill")
+     if cl then make_clustered_dot (colors col) t
            else make_unclustered_dot (colors col) "" t >> return ()
      forM_ (IMap.toList es) $ \(x,ys) ->
        forM_ (Set.toList ys) $ \y -> userNodeId x .->. userNodeId y
@@ -323,6 +325,7 @@ data Opts = Opts
   , show_version  :: Bool
   , color_scheme  :: Int
   , prune_edges   :: Bool
+  , graph_size    :: String
   }
 
 type IgnoreSet  = Trie.Trie String IgnoreSpec
@@ -341,6 +344,7 @@ default_opts = Opts
   , show_version    = False
   , color_scheme    = 0
   , prune_edges     = False
+  , graph_size      = "6,4"
   }
 
 options :: [OptDescr OptT]
@@ -370,7 +374,10 @@ options =
     "Display modules NAME and NAME.* as one node"
 
   , Option ['p'] ["prune-edges"] (NoArg set_prune)
-    "Prune edges."
+    "Remove imports if the module is imported by another imported module"
+
+  , Option ['d'] ["graph-dim"] (ReqArg set_size "SIZE,SIZE")
+    "Set dimensions of the graph.  See the `size` attribute of graphvize."
 
   , Option ['s'] ["colors"] (ReqArg add_color_scheme "NUM")
     "Choose a color scheme number (0-5)"
@@ -430,3 +437,6 @@ add_collapse_qual m s o = o { collapse_quals = upd (splitQualifier s)
 
 set_prune :: OptT
 set_prune o = o { prune_edges = True }
+
+set_size :: String -> OptT
+set_size s o = o { graph_size = s }
