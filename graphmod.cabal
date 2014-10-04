@@ -4,7 +4,7 @@ license:        BSD3
 license-file:   LICENSE
 author:         Iavor S. Diatchki
 maintainer:     iavor.diatchki@gmail.com
-homepage:       http://github.com/yav/graphmod
+homepage:       http://github.com/yav/graphmod/wiki
 build-type:     Simple
 cabal-version:  >= 1.2
 synopsis:       Present the module dependencies of a program as a "dot" graph.
