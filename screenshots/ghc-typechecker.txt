@@ -1,0 +1,1 @@
+find . -name '*.lhs' | xargs graphmod -q -p > ~/tmp/examples/ghc-typechecker.dot

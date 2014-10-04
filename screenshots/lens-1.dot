@@ -1,0 +1,517 @@
+digraph G {
+size="6,4";
+ratio="fill";
+subgraph cluster_0 {
+label="Codec";
+color="#ccffcc";
+style="filled";
+subgraph cluster_1 {
+label="Compression";
+color="#99ff99";
+style="filled";
+subgraph cluster_2 {
+label="Zlib";
+color="#66ff66";
+style="filled";
+u29[label="Lens"];
+
+}
+
+}
+
+}
+subgraph cluster_3 {
+label="Control";
+color="#ccffcc";
+style="filled";
+u84[label="Lens"];
+subgraph cluster_4 {
+label="Exception";
+color="#99ff99";
+style="filled";
+u30[label="Lens"];
+
+}
+subgraph cluster_5 {
+label="Lens";
+color="#99ff99";
+style="filled";
+u79[label="Setter"];
+u78[label="Indexed"];
+u77[label="Lens"];
+u76[label="At"];
+u75[label="Iso"];
+u74[label="Fold"];
+u73[label="Tuple"];
+u72[label="Action"];
+u71[label="Extras"];
+u70[label="Review"];
+u48[label="Each"];
+u47[label="Equality"];
+u46[label="Type"];
+u45[label="Combinators"];
+u44[label="Loupe"];
+u43[label="Wrapped"];
+u42[label="Level"];
+u41[label="Reified"];
+u40[label="Prism"];
+u39[label="Internal"];
+u38[label="Operators"];
+u37[label="Empty"];
+u36[label="Traversal"];
+u35[label="TH"];
+u34[label="Plated"];
+u33[label="Cons"];
+u32[label="Zoom"];
+u31[label="Getter"];
+subgraph cluster_6 {
+label="Internal";
+color="#66ff66";
+style="filled";
+u69[label="Setter"];
+u68[label="Bazaar"];
+u67[label="Indexed"];
+u66[label="Iso"];
+u65[label="Fold"];
+u64[label="Reflection"];
+u63[label="Action"];
+u62[label="Deque"];
+u61[label="Instances"];
+u60[label="Magma"];
+u59[label="Review"];
+u58[label="Context"];
+u57[label="Exception"];
+u56[label="PrismTH"];
+u55[label="FieldTH"];
+u54[label="Level"];
+u53[label="Prism"];
+u52[label="TH"];
+u51[label="ByteString"];
+u50[label="Zoom"];
+u49[label="Getter"];
+
+}
+
+}
+subgraph cluster_7 {
+label="Monad";
+color="#99ff99";
+style="filled";
+subgraph cluster_8 {
+label="Error";
+color="#66ff66";
+style="filled";
+u82[label="Lens"];
+
+}
+subgraph cluster_9 {
+label="Primitive";
+color="#66ff66";
+style="filled";
+u81[label="Lens"];
+
+}
+
+}
+subgraph cluster_10 {
+label="Parallel";
+color="#99ff99";
+style="filled";
+subgraph cluster_11 {
+label="Strategies";
+color="#66ff66";
+style="filled";
+u80[label="Lens"];
+
+}
+
+}
+subgraph cluster_12 {
+label="Seq";
+color="#99ff99";
+style="filled";
+u83[label="Lens"];
+
+}
+
+}
+subgraph cluster_13 {
+label="Data";
+color="#ccffcc";
+style="filled";
+subgraph cluster_14 {
+label="Array";
+color="#99ff99";
+style="filled";
+u23[label="Lens"];
+
+}
+subgraph cluster_15 {
+label="Bits";
+color="#99ff99";
+style="filled";
+u11[label="Lens"];
+
+}
+subgraph cluster_16 {
+label="ByteString";
+color="#99ff99";
+style="filled";
+u22[label="Lens"];
+subgraph cluster_17 {
+label="Lazy";
+color="#66ff66";
+style="filled";
+u21[label="Lens"];
+
+}
+subgraph cluster_18 {
+label="Strict";
+color="#66ff66";
+style="filled";
+u20[label="Lens"];
+
+}
+
+}
+subgraph cluster_19 {
+label="Complex";
+color="#99ff99";
+style="filled";
+u12[label="Lens"];
+
+}
+subgraph cluster_20 {
+label="Data";
+color="#99ff99";
+style="filled";
+u5[label="Lens"];
+
+}
+subgraph cluster_21 {
+label="Dynamic";
+color="#99ff99";
+style="filled";
+u15[label="Lens"];
+
+}
+subgraph cluster_22 {
+label="HashSet";
+color="#99ff99";
+style="filled";
+u14[label="Lens"];
+
+}
+subgraph cluster_23 {
+label="IntSet";
+color="#99ff99";
+style="filled";
+u24[label="Lens"];
+
+}
+subgraph cluster_24 {
+label="List";
+color="#99ff99";
+style="filled";
+u4[label="Lens"];
+subgraph cluster_25 {
+label="Split";
+color="#66ff66";
+style="filled";
+u3[label="Lens"];
+
+}
+
+}
+subgraph cluster_26 {
+label="Map";
+color="#99ff99";
+style="filled";
+u16[label="Lens"];
+
+}
+subgraph cluster_27 {
+label="Sequence";
+color="#99ff99";
+style="filled";
+u13[label="Lens"];
+
+}
+subgraph cluster_28 {
+label="Set";
+color="#99ff99";
+style="filled";
+u17[label="Lens"];
+
+}
+subgraph cluster_29 {
+label="Text";
+color="#99ff99";
+style="filled";
+u10[label="Lens"];
+subgraph cluster_30 {
+label="Lazy";
+color="#66ff66";
+style="filled";
+u9[label="Lens"];
+
+}
+subgraph cluster_31 {
+label="Strict";
+color="#66ff66";
+style="filled";
+u8[label="Lens"];
+
+}
+
+}
+subgraph cluster_32 {
+label="Tree";
+color="#99ff99";
+style="filled";
+u19[label="Lens"];
+
+}
+subgraph cluster_33 {
+label="Typeable";
+color="#99ff99";
+style="filled";
+u18[label="Lens"];
+
+}
+subgraph cluster_34 {
+label="Vector";
+color="#99ff99";
+style="filled";
+u7[label="Lens"];
+subgraph cluster_35 {
+label="Generic";
+color="#66ff66";
+style="filled";
+u6[label="Lens"];
+
+}
+
+}
+
+}
+subgraph cluster_36 {
+label="GHC";
+color="#ccffcc";
+style="filled";
+subgraph cluster_37 {
+label="Generics";
+color="#99ff99";
+style="filled";
+u0[label="Lens"];
+
+}
+
+}
+subgraph cluster_38 {
+label="Generics";
+color="#ccffcc";
+style="filled";
+subgraph cluster_39 {
+label="Deriving";
+color="#99ff99";
+style="filled";
+u1[label="Lens"];
+
+}
+
+}
+subgraph cluster_40 {
+label="Language";
+color="#ccffcc";
+style="filled";
+subgraph cluster_41 {
+label="Haskell";
+color="#99ff99";
+style="filled";
+subgraph cluster_42 {
+label="TH";
+color="#66ff66";
+style="filled";
+u25[label="Lens"];
+
+}
+
+}
+
+}
+subgraph cluster_43 {
+label="Numeric";
+color="#ccffcc";
+style="filled";
+u2[label="Lens"];
+
+}
+subgraph cluster_44 {
+label="System";
+color="#ccffcc";
+style="filled";
+subgraph cluster_45 {
+label="Exit";
+color="#99ff99";
+style="filled";
+u28[label="Lens"];
+
+}
+subgraph cluster_46 {
+label="FilePath";
+color="#99ff99";
+style="filled";
+u27[label="Lens"];
+
+}
+subgraph cluster_47 {
+label="IO";
+color="#99ff99";
+style="filled";
+subgraph cluster_48 {
+label="Error";
+color="#66ff66";
+style="filled";
+u26[label="Lens"];
+
+}
+
+}
+
+}
+u0 -> u1;
+u1 -> u84;
+u2 -> u84;
+u3 -> u84;
+u4 -> u84;
+u5 -> u36;
+u5 -> u79;
+u6 -> u84;
+u7 -> u84;
+u8 -> u84;
+u9 -> u84;
+u10 -> u8;
+u10 -> u9;
+u11 -> u84;
+u12 -> u84;
+u13 -> u84;
+u14 -> u31;
+u14 -> u79;
+u15 -> u30;
+u17 -> u31;
+u17 -> u79;
+u18 -> u84;
+u19 -> u84;
+u20 -> u51;
+u21 -> u51;
+u22 -> u20;
+u22 -> u21;
+u23 -> u84;
+u24 -> u84;
+u25 -> u17;
+u25 -> u73;
+u25 -> u76;
+u26 -> u84;
+u27 -> u84;
+u28 -> u30;
+u29 -> u84;
+u30 -> u57;
+u30 -> u84;
+u31 -> u46;
+u31 -> u49;
+u32 -> u31;
+u32 -> u50;
+u33 -> u40;
+u33 -> u47;
+u33 -> u73;
+u33 -> u74;
+u34 -> u5;
+u34 -> u78;
+u35 -> u55;
+u35 -> u56;
+u36 -> u74;
+u36 -> u77;
+u37 -> u75;
+u38 -> u84;
+u39 -> u50;
+u39 -> u53;
+u39 -> u54;
+u39 -> u59;
+u39 -> u60;
+u39 -> u65;
+u39 -> u66;
+u39 -> u69;
+u40 -> u53;
+u40 -> u70;
+u40 -> u77;
+u41 -> u36;
+u41 -> u72;
+u42 -> u36;
+u42 -> u54;
+u43 -> u75;
+u44 -> u77;
+u45 -> u84;
+u46 -> u63;
+u46 -> u67;
+u46 -> u69;
+u47 -> u46;
+u48 -> u36;
+u48 -> u75;
+u49 -> u63;
+u50 -> u63;
+u51 -> u84;
+u55 -> u25;
+u55 -> u34;
+u55 -> u52;
+u56 -> u25;
+u56 -> u52;
+u57 -> u64;
+u57 -> u74;
+u58 -> u67;
+u60 -> u68;
+u62 -> u33;
+u62 -> u75;
+u62 -> u78;
+u65 -> u49;
+u67 -> u61;
+u68 -> u58;
+u70 -> u31;
+u70 -> u59;
+u71 -> u84;
+u72 -> u46;
+u72 -> u65;
+u73 -> u77;
+u74 -> u31;
+u74 -> u60;
+u74 -> u65;
+u75 -> u40;
+u75 -> u47;
+u75 -> u66;
+u75 -> u74;
+u76 -> u48;
+u76 -> u79;
+u77 -> u46;
+u77 -> u49;
+u77 -> u58;
+u78 -> u36;
+u78 -> u54;
+u78 -> u79;
+u79 -> u46;
+u80 -> u84;
+u81 -> u84;
+u82 -> u57;
+u82 -> u84;
+u83 -> u84;
+u84 -> u32;
+u84 -> u33;
+u84 -> u34;
+u84 -> u37;
+u84 -> u41;
+u84 -> u42;
+u84 -> u43;
+u84 -> u44;
+u84 -> u76;
+
+}
+

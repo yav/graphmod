@@ -1,0 +1,1 @@
+find src -name '*.hs' | xargs graphmod -q -p --no-cluster > ~/tmp/examples/cryptol-2.dot

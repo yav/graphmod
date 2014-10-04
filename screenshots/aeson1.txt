@@ -1,0 +1,1 @@
+find Data -name '*.hs' | xargs graphmod -q > ~/tmp/examples/aeson1.dot

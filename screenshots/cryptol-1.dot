@@ -1,0 +1,231 @@
+digraph G {
+size="6,4";
+ratio="fill";
+u0[label="GitRev"];
+subgraph cluster_0 {
+label="Cryptol";
+color="#ccffcc";
+style="filled";
+u33[label="Symbolic"];
+u32[label="TypeCheck"];
+u31[label="ModuleSystem"];
+u17[label="Version"];
+u16[label="Eval"];
+subgraph cluster_1 {
+label="Eval";
+color="#99ff99";
+style="filled";
+u21[label="Env"];
+u20[label="Type"];
+u19[label="Value"];
+u18[label="Error"];
+
+}
+subgraph cluster_2 {
+label="ModuleSystem";
+color="#99ff99";
+style="filled";
+u13[label="Env"];
+u12[label="Interface"];
+u11[label="Renamer"];
+u10[label="NamingEnv"];
+u9[label="Base"];
+u8[label="Monad"];
+
+}
+subgraph cluster_3 {
+label="Parser";
+color="#99ff99";
+style="filled";
+u30[label="Utils"];
+u29[label="Names"];
+u28[label="NoInclude"];
+u27[label="LexerUtils"];
+u26[label="NoPat"];
+u25[label="AST"];
+u24[label="Position"];
+u23[label="Unlit"];
+u22[label="ParserUtils"];
+
+}
+subgraph cluster_4 {
+label="Prims";
+color="#99ff99";
+style="filled";
+u4[label="Types"];
+u3[label="Doc"];
+u2[label="Eval"];
+u1[label="Syntax"];
+
+}
+subgraph cluster_5 {
+label="Symbolic";
+color="#99ff99";
+style="filled";
+u38[label="BitVector"];
+u37[label="Value"];
+u36[label="Prims"];
+
+}
+subgraph cluster_6 {
+label="Testing";
+color="#99ff99";
+style="filled";
+u35[label="Random"];
+u34[label="Exhaust"];
+
+}
+subgraph cluster_7 {
+label="Transform";
+color="#99ff99";
+style="filled";
+u15[label="Specialize"];
+u14[label="MonoValues"];
+
+}
+subgraph cluster_8 {
+label="TypeCheck";
+color="#99ff99";
+style="filled";
+u63[label="Defaulting"];
+u62[label="Instantiate"];
+u61[label="Unify"];
+u60[label="Subst"];
+u59[label="Depends"];
+u58[label="InferTypes"];
+u57[label="TypeOf"];
+u56[label="Kind"];
+u44[label="AST"];
+u43[label="TypeMap"];
+u42[label="Infer"];
+u41[label="Monad"];
+u40[label="Solve"];
+u39[label="PP"];
+subgraph cluster_9 {
+label="Solver";
+color="#66ff66";
+style="filled";
+u55[label="Utils"];
+u54[label="CrySAT"];
+u53[label="Class"];
+u52[label="Numeric"];
+u51[label="Selector"];
+u50[label="CrySAT1"];
+u49[label="Eval"];
+u48[label="Interval"];
+u47[label="InfNat"];
+u46[label="Smtlib"];
+u45[label="FinOrd"];
+
+}
+
+}
+subgraph cluster_10 {
+label="Utils";
+color="#99ff99";
+style="filled";
+u7[label="Panic"];
+u6[label="Debug"];
+u5[label="PP"];
+
+}
+
+}
+u1 -> u5;
+u2 -> u20;
+u2 -> u35;
+u3 -> u4;
+u4 -> u44;
+u6 -> u5;
+u7 -> u17;
+u8 -> u11;
+u8 -> u13;
+u8 -> u26;
+u8 -> u28;
+u9 -> u8;
+u9 -> u14;
+u10 -> u12;
+u10 -> u29;
+u11 -> u10;
+u12 -> u44;
+u13 -> u10;
+u13 -> u16;
+u13 -> u32;
+u14 -> u43;
+u15 -> u31;
+u16 -> u2;
+u17 -> u0;
+u18 -> u44;
+u19 -> u18;
+u19 -> u47;
+u20 -> u21;
+u21 -> u19;
+u22 -> u7;
+u22 -> u30;
+u23 -> u7;
+u24 -> u5;
+u25 -> u1;
+u25 -> u24;
+u26 -> u7;
+u26 -> u25;
+u27 -> u23;
+u27 -> u24;
+u28 -> u22;
+u28 -> u27;
+u29 -> u25;
+u30 -> u25;
+u31 -> u9;
+u32 -> u42;
+u33 -> u31;
+u33 -> u36;
+u34 -> u19;
+u35 -> u19;
+u36 -> u2;
+u36 -> u37;
+u37 -> u19;
+u37 -> u38;
+u38 -> u7;
+u39 -> u5;
+u40 -> u46;
+u40 -> u51;
+u40 -> u53;
+u40 -> u54;
+u40 -> u63;
+u41 -> u58;
+u41 -> u61;
+u42 -> u4;
+u42 -> u56;
+u42 -> u59;
+u42 -> u62;
+u43 -> u44;
+u44 -> u7;
+u44 -> u25;
+u44 -> u39;
+u45 -> u43;
+u45 -> u48;
+u45 -> u58;
+u46 -> u45;
+u47 -> u7;
+u48 -> u47;
+u49 -> u45;
+u49 -> u55;
+u50 -> u47;
+u51 -> u41;
+u52 -> u49;
+u52 -> u61;
+u53 -> u58;
+u54 -> u7;
+u55 -> u44;
+u56 -> u40;
+u57 -> u4;
+u57 -> u60;
+u58 -> u60;
+u59 -> u29;
+u59 -> u41;
+u60 -> u44;
+u61 -> u60;
+u62 -> u41;
+u63 -> u52;
+
+}
+

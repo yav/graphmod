@@ -1,0 +1,71 @@
+digraph G {
+size="6,4";
+ratio="fill";
+subgraph cluster_0 {
+label="Data";
+color="#ccffcc";
+style="filled";
+u1[label="Aeson"];
+subgraph cluster_1 {
+label="Aeson";
+color="#99ff99";
+style="filled";
+u11[label="Parser"];
+u10[label="Generic"];
+u5[label="Functions"];
+u3[label="Types"];
+u2[label="Encode"];
+u0[label="TH"];
+subgraph cluster_2 {
+label="Encode";
+color="#66ff66";
+style="filled";
+u8[label="ByteString"];
+
+}
+subgraph cluster_3 {
+label="Parser";
+color="#66ff66";
+style="filled";
+u9[label="Internal"];
+
+}
+subgraph cluster_4 {
+label="Types";
+color="#66ff66";
+style="filled";
+u12[label="Generic"];
+u7[label="Internal"];
+u6[label="Class"];
+u4[label="Instances"];
+
+}
+
+}
+
+}
+u0 -> u1;
+u0 -> u3;
+u1 -> u2;
+u1 -> u3;
+u1 -> u9;
+u2 -> u3;
+u2 -> u8;
+u3 -> u4;
+u3 -> u7;
+u4 -> u5;
+u4 -> u6;
+u4 -> u7;
+u6 -> u7;
+u8 -> u3;
+u9 -> u3;
+u10 -> u2;
+u10 -> u3;
+u10 -> u5;
+u10 -> u9;
+u11 -> u9;
+u12 -> u4;
+u12 -> u7;
+
+}
+
