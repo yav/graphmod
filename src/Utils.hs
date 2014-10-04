@@ -34,7 +34,7 @@ dropApproxCPP ((_, (_,"")) : more) = dropApproxCPP more
 
 dropApproxCPP ((Varsym, (_,"#")) : (_, (pos,tok)) : more)
   | tok `elem` [ "if", "ifdef", "ifndef" ] = dropToEndif more
-  | tok == "include" = dropToEOL more
+  | tok `elem` [ "include", "define", "undef" ] = dropToEOL more
   where
   dropToEndif ((Varsym, (_,"#")) : (_, (_,"endif")) : rest)
                          = dropApproxCPP rest
