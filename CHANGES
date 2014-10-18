@@ -1,3 +1,12 @@
+* Version 1.2.6
+
+  Add support for parsing GHC's .import files.  These may be produced
+  by running GHC with -ddump-minimal-imports
+
+* Version 1.2.5
+
+  Add support for pruning the dependecy graph.
+
 * Version 1.2.3
 
   [Collapse Modules]

@@ -20,8 +20,15 @@ import System.FilePath
 
 -- | Get the imports of a file.
 parseFile          :: FilePath -> IO (ModName,[ModName])
-parseFile f         = (parseString . get_text) `fmap` readFile f
-  where get_text txt = if takeExtension f == ".lhs" then delit txt else txt
+parseFile f =
+  do (modName, imps) <- (parseString . get_text) `fmap` readFile f
+     if ext == ".imports"
+       then return (splitModName (takeBaseName f), imps)
+       else return (modName, imps)
+
+
+  where get_text txt = if ext == ".lhs" then delit txt else txt
+        ext          = takeExtension f
 
 -- | Get the imports from a string that represents a program.
 parseString        :: String -> (ModName,[ModName])
@@ -95,7 +102,7 @@ relPaths (xs,y)     = [ prefix ++ suffix | suffix <- suffixes ]
   where prefix      = foldr (</>) y xs
 
 suffixes           :: [String]
-suffixes            = [".hs",".lhs"]
+suffixes            = [".hs",".lhs", ".imports"]
 
 -- | The files in which a module might reside.
 -- We report only files that exist.
