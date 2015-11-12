@@ -28,7 +28,7 @@ main = do xs <- getArgs
 
                | otherwise ->
                   do g <- graph (add_current opts) (map to_input ms)
-                     putStrLn (make_dot (graph_size opts) (color_scheme opts)
+                     putStr (make_dot (graph_size opts) (color_scheme opts)
                                                       (use_clusters opts) g)
               where opts = foldr ($) default_opts fs
 
