@@ -1,3 +1,6 @@
+* Version 1.2.7
+  Correct the prunning logic.
+
 * Version 1.2.6
 
   Add support for parsing GHC's .import files.  These may be produced
