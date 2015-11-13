@@ -48,6 +48,8 @@ to_input m
 
 -- type Nodes    = Trie.Trie String [(String,Int)]
 type NodesC   = Trie.Trie String [((NodeT,String),Int)]
+                    -- Maps a path to:   ((node, label), nodeId)
+
 type Edges    = IMap.IntMap Set.IntSet
 
 
@@ -105,29 +107,30 @@ graph opts inputs = fmap maybePrune $ mfix $ \ ~(_,mods) ->
   maybePrune (es,ns) = if prune_edges opts then (pruneEdges es, ns)
                                            else (es,ns)
 
+
+
+
 pruneEdges :: Edges -> Edges
-pruneEdges es = fmap (prune [] . Set.toList) es
+pruneEdges es = foldr checkEdges es (IMap.toList es)
   where
-  -- add nodes that are reachable in one more step than the given set
-  step :: Set.IntSet -> Set.IntSet
-  step      = Set.unions . mapMaybe (`IMap.lookup` es) . Set.toList
+  reachIn _ _ _ [] = False
+  reachIn g tgt visited (x : xs)
+    | x `Set.member` visited  = reachIn g tgt visited xs
+    | x == tgt                = True
+    | otherwise = let vs = neighbours g x
+                  in reachIn g tgt (Set.insert x visited) (vs ++ xs)
 
-  -- compute closure using a naive fix-point
-  reach g   = let g' = fmap (\ns -> Set.union ns (step ns)) g
-              in if g == g' then g else reach g'
-  reachable = reach es
+  neighbours g x = Set.toList (IMap.findWithDefault Set.empty x g)
 
-  x `reachableFrom` y = case IMap.lookup y reachable of
-                          Just rs -> x `Set.member` rs
-                          Nothing -> False
+  reachableIn g x y = reachIn g y Set.empty [x]
 
-  x `reachableFromOneOf` ys = any (x `reachableFrom`) ys
+  rmEdge x y g = IMap.adjust (Set.delete y) x g
 
-  prune done []                   = Set.fromList done
-  prune done (x : xs)
-    | x `reachableFromOneOf` done = prune done xs
-    | x `reachableFromOneOf` xs   = prune done xs
-    | otherwise                   = prune (x : done) xs
+  checkEdge x y g = let g1 = rmEdge x y g
+                    in if reachableIn g1 x y then g1 else g
+
+  checkEdges (x,vs) g = foldr (checkEdge x) g (Set.toList vs)
+
 
 isIgnored :: IgnoreSet -> ModName -> Bool
 isIgnored (Trie.Sub _ (Just IgnoreAll))       _        = True
