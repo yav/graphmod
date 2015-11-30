@@ -54,7 +54,10 @@ type Edges    = IMap.IntMap Set.IntSet
 
 
 data NodeT    = ModuleNode
-              | CollapsedNode Bool  -- ^ indicates if it contains module too
+              | CollapsedNode Bool NodesC
+                -- ^ indicates if it contains module too.
+                -- Also includes the collapsed tree, so we know whether to
+                -- draw edges "into" the collapsed node or not.
                 deriving (Show,Eq,Ord)
 
 graph :: Opts -> [Input] -> IO (Edges, NodesC)
@@ -145,16 +148,17 @@ lookupNode :: ModName -> NodesC -> Maybe Int
 lookupNode ([],m) (Trie.Sub _ mb) = lookupBy (containsModule m) =<< mb
 
 lookupNode (q:qs,m) (Trie.Sub ts mb) =
-  (lookupBy (isCollapsed q) =<< mb) `mplus`
+  (lookupBy containsNode =<< mb) `mplus`
   (lookupNode (qs,m) =<< Map.lookup q ts)
 
-containsModule :: String -> (NodeT, String) -> Bool
-containsModule q (ModuleNode, q1)             = q == q1
-containsModule q (CollapsedNode withMod, q1)  = withMod && q == q1
+  where
+  containsNode :: (NodeT, String) -> Bool
+  containsNode (CollapsedNode _ t, q1) = q == q1 && isJust (lookupNode (qs,m) t)
+  containsNode (ModuleNode, _)         = False
 
-isCollapsed :: String -> (NodeT, String) -> Bool
-isCollapsed q (CollapsedNode _, q1) = q == q1
-isCollapsed _ (ModuleNode, _)       = False
+containsModule :: String -> (NodeT, String) -> Bool
+containsModule q (ModuleNode, q1)              = q == q1
+containsModule q (CollapsedNode withMod _, q1) = withMod && q == q1
 
 lookupBy :: (a -> Bool) -> [(a,b)] -> Maybe b
 lookupBy p xs = listToMaybe [ y | (x,y) <- xs, p x ]
@@ -178,13 +182,15 @@ collapse _ ([],_) = return Trie.empty      -- Probably not terribly useful.
 
 collapse (Trie.Sub ts mb) ([q],alsoMod) =
   do (n,withMod) <- fmap (\x -> (x,True)) useMod
-            `mplus` fmap (\x -> (x,False)) (getFirst =<< Map.lookup q ts)
+            `mplus` fmap (\x -> (x,False)) (getFirst =<< thisTrie)
 
      return $ Trie.Sub (Map.delete q ts)
-            $ Just $ ((CollapsedNode withMod,q),n)
+            $ Just $ ((CollapsedNode withMod collapsedTrie, q),n)
                    : if withMod then others else allNodes
 
-  where allNodes          = fromMaybe [] mb
+  where thisTrie          = Map.lookup q ts
+        collapsedTrie     = fromMaybe Trie.empty thisTrie
+        allNodes          = fromMaybe [] mb
         (thisNode,others) = partition (containsModule q . fst) allNodes
         useMod            = do guard alsoMod
                                listToMaybe (map snd thisNode)
@@ -226,15 +232,15 @@ make_clustered_dot c (Trie.Sub xs ys) =
        userNode (userNodeId n) $
        [ ("label",ls) ] ++
        case t of
-         CollapsedNode False -> [ ("shape", "box")
-                                , ("style","filled")
-                                , ("color", col)
-                                ]
-         CollapsedNode True  -> [ ("shape", "box")
-                                , ("fillcolor", col)
-                                , ("style","filled")
-                                ]
-         ModuleNode          -> []
+         CollapsedNode False _ -> [ ("shape", "box")
+                                  , ("style","filled")
+                                  , ("color", col)
+                                  ]
+         CollapsedNode True  _ -> [ ("shape", "box")
+                                  , ("fillcolor", col)
+                                  , ("style","filled")
+                                  ]
+         ModuleNode            -> []
 
      forM_ (Map.toList xs) $ \(name,sub) ->
        cluster $
@@ -255,10 +261,10 @@ make_unclustered_dot c pre (Trie.Sub xs ys') =
               , ("label", pre ++ ls)
               ] ++
             case t of
-              CollapsedNode False -> [ ("shape", "box"), ("color", col) ]
-              CollapsedNode True  -> [ ("shape", "box") ]
-              ModuleNode          -> []
-      
+              CollapsedNode False _ -> [ ("shape", "box"), ("color", col) ]
+              CollapsedNode True  _ -> [ ("shape", "box") ]
+              ModuleNode            -> []
+
      let c1 = if null ys then c else tail c
      c1 `seq` loop (Map.toList xs) c1
   where

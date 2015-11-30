@@ -4,7 +4,7 @@ import qualified Data.Map as Map
 import Data.Maybe(fromMaybe)
 
 data Trie a b = Sub (Map.Map a (Trie a b)) (Maybe b)
-                deriving Show
+                deriving (Eq, Ord, Show)
 
 empty :: Trie a b
 empty = Sub Map.empty Nothing
