@@ -14,7 +14,7 @@ category:       Development
 
 executable graphmod
     main-is:         Main.hs
-    other-modules:   Utils, Trie
+    other-modules:   Utils, Trie, Paths_graphmod
     build-depends:   base < 5, directory, filepath, dotgen >= 0.2 && < 0.5,
                      haskell-lexer, containers
     hs-source-dirs:  src
