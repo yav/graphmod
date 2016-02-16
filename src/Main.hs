@@ -1,10 +1,12 @@
 import Utils
 import qualified Trie
+import CabalSupport(parseCabalFile,Unit(..))
 
 import Text.Dot
 
 import Control.Monad(when,forM_,(<=<),mplus,msum,guard)
 import Control.Monad.Fix(mfix)
+import Control.Exception(catch,SomeException(..))
 import Data.List(intersperse,partition)
 import Data.Maybe(mapMaybe,isJust,fromMaybe,listToMaybe)
 import qualified Data.IntMap as IMap
@@ -14,6 +16,7 @@ import System.Environment(getArgs)
 import System.IO(hPutStrLn,stderr)
 import System.FilePath
 import System.Console.GetOpt
+import System.Directory(getDirectoryContents)
 import Numeric(showHex)
 
 import Paths_graphmod (version)
@@ -27,7 +30,9 @@ main = do xs <- getArgs
                   putStrLn ("graphmod " ++ showVersion version)
 
                | otherwise ->
-                  do g <- graph (add_current opts) (map to_input ms)
+                  do (incs,inps) <- fromCabal (use_cabal opts)
+                     g <- graph (foldr add_inc (add_current opts) incs)
+                                (inps ++ map to_input ms)
                      putStr (make_dot (graph_size opts) (color_scheme opts)
                                                       (use_clusters opts) g)
               where opts = foldr ($) default_opts fs
@@ -37,6 +42,7 @@ main = do xs <- getArgs
 
 
 data Input  = File FilePath | Module ModName
+              deriving Show
 
 -- | Guess if we have a file or a module name
 to_input :: String -> Input
@@ -319,6 +325,31 @@ ambigMsg m xs       = "Multiple files for module " ++ joinModName m
                    ++ " (picking the first):\n"
                    ++ concat (intersperse "," xs)
 
+
+--------------------------------------------------------------------------------
+
+
+fromCabal :: Bool -> IO ([FilePath],[Input])
+fromCabal True =
+  do fs <- getDirectoryContents "." -- XXX
+     case filter ((".cabal" ==) . takeExtension) fs of
+       f : _ -> do units <- parseCabalFile f
+                              `catch` \SomeException {} -> return []
+                   return (fromUnits units)
+       _ -> return ([],[])
+fromCabal _ = return ([],[])
+
+
+fromUnits :: [Unit] -> ([FilePath], [Input])
+fromUnits us = (concat fs, concat is)
+  where
+  (fs,is) = unzip (map fromUnit us)
+
+fromUnit :: Unit -> ([FilePath], [Input])
+fromUnit u = (unitPaths u, map File (unitFiles u) ++ map Module (unitModules u))
+
+
+
 -- Command line options
 --------------------------------------------------------------------------------
 data Opts = Opts
@@ -335,6 +366,8 @@ data Opts = Opts
   , color_scheme  :: Int
   , prune_edges   :: Bool
   , graph_size    :: String
+
+  , use_cabal     :: Bool -- ^ should we try to use a cabal file, if any
   }
 
 type IgnoreSet  = Trie.Trie String IgnoreSpec
@@ -354,6 +387,7 @@ default_opts = Opts
   , color_scheme    = 0
   , prune_edges     = False
   , graph_size      = "6,4"
+  , use_cabal       = True
   }
 
 options :: [OptDescr OptT]
@@ -390,6 +424,9 @@ options =
 
   , Option ['s'] ["colors"] (ReqArg add_color_scheme "NUM")
     "Choose a color scheme number (0-5)"
+
+  , Option [] ["no-cabal"] (NoArg (set_cabal False))
+    "Do not use Cabal for paths and modules."
 
   , Option ['v'] ["version"]   (NoArg set_show_version)
     "Show the current version."
@@ -449,3 +486,7 @@ set_prune o = o { prune_edges = True }
 
 set_size :: String -> OptT
 set_size s o = o { graph_size = s }
+
+set_cabal :: Bool -> OptT
+set_cabal on o = o { use_cabal = on }
+
