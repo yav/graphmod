@@ -12,6 +12,8 @@ description:    This package contains a program that computes "dot" graphs
                 from the dependencies of a number of Haskell modules.
 category:       Development
 
+tested-with:    GHC==7.10.3, GHC==7.8.4
+
 executable graphmod
     main-is:         Main.hs
     other-modules:   Utils, Trie, Paths_graphmod, CabalSupport
@@ -23,3 +25,4 @@ executable graphmod
 source-repository head
   type:     git
   location: git://github.com/yav/graphmod
+
