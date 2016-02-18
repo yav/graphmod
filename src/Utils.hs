@@ -13,6 +13,7 @@ module Utils
 
 import Language.Haskell.Lexer(lexerPass1,Token(..),PosToken,line)
 
+import Control.Monad(mplus)
 import Data.Maybe(catMaybes)
 import Data.List(intersperse,isPrefixOf)
 import System.Directory(doesFileExist)
@@ -56,14 +57,22 @@ dropApproxCPP (x : xs) = x : dropApproxCPP xs
 dropApproxCPP []       = []
 
 
+-- 'import' maybe_src maybe_safe optqualified maybe_pkg modid maybeas maybeimpspec
 isImp              :: [PosToken] -> Maybe (String, [PosToken])
-isImp (_ : (Conid, (_,x)) : xs)   = Just (x,xs)
-isImp (_ : (Qconid, (_,x)) : xs)  = Just (x,xs)
--- isImp (_ : (Specialid,_) : (Conid, (_,x)) : xs)   = Just (x,xs)
--- isImp (_ : (Specialid,_) : (Qconid, (_,x)) : xs)  = Just (x,xs)
-isImp (_ : (Varid,_) : (Conid, (_,x)) : xs)   = Just (x,xs)
-isImp (_ : (Varid,_) : (Qconid, (_,x)) : xs)  = Just (x,xs)
-isImp _ = Nothing
+isImp ts = attempt 1 (drop 1 ts)
+  where
+  attempt n toks
+    -- import safe qualified "package" ModId
+    | n > 4     = Nothing
+    | otherwise = mplus (isMod toks) (attempt (n+1) (drop 1 toks))
+
+  isMod ((ty, (_,x)) : xs) = case ty of
+                               Conid  -> Just (x,xs)
+                               Qconid -> Just (x,xs)
+                               _      -> Nothing
+  isMod _                   = Nothing
+
+
 
 parse              :: [PosToken] -> (ModName,[ModName])
 parse ((Reservedid,(_,"module")) : (_,(_,m)) : is) =
