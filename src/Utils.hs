@@ -2,6 +2,8 @@ module Utils
   ( parseFile
   , parseString
   , Qualifier
+  , Import(..)
+  , ImpType(..)
   , splitQualifier
   , ModName
   , splitModName
@@ -11,7 +13,7 @@ module Utils
   , suffixes
   ) where
 
-import Language.Haskell.Lexer(lexerPass1,Token(..),PosToken,line)
+import Language.Haskell.Lexer(lexerPass0,Token(..),PosToken,line)
 
 import Control.Monad(mplus)
 import Data.Maybe(catMaybes)
@@ -19,8 +21,14 @@ import Data.List(intersperse,isPrefixOf)
 import System.Directory(doesFileExist)
 import System.FilePath
 
+data Import = Import { impMod :: ModName, impType :: ImpType }
+                deriving Show
+
+data ImpType = NormalImp | SourceImp
+                deriving (Show,Eq,Ord)
+
 -- | Get the imports of a file.
-parseFile          :: FilePath -> IO (ModName,[ModName])
+parseFile          :: FilePath -> IO (ModName,[Import])
 parseFile f =
   do (modName, imps) <- (parseString . get_text) `fmap` readFile f
      if ext == ".imports"
@@ -32,8 +40,28 @@ parseFile f =
         ext          = takeExtension f
 
 -- | Get the imports from a string that represents a program.
-parseString        :: String -> (ModName,[ModName])
-parseString         = parse . dropApproxCPP . lexerPass1
+parseString        :: String -> (ModName,[Import])
+parseString         = parse . dropApproxCPP . dropComments . lexerPass0
+
+
+-- | Drop comments, but keep {-# SOURCE #-} pragmas.
+dropComments :: [PosToken] -> [PosToken]
+dropComments = filter (not . skip)
+  where
+  skip (t, (_,txt))
+    |  t == Whitespace
+    || t == Commentstart
+    || t == Comment
+    || t == LiterateComment = True
+    |  t == NestedComment   = not (isSourcePragma txt)
+    | otherwise             = False
+
+
+isSourcePragma :: String -> Bool
+isSourcePragma txt = case words txt of
+                       ["{-#", "SOURCE", "#-}"] -> True
+                       _                        -> False
+
 
 dropApproxCPP :: [PosToken] -> [PosToken]
 
@@ -57,9 +85,10 @@ dropApproxCPP (x : xs) = x : dropApproxCPP xs
 dropApproxCPP []       = []
 
 
--- 'import' maybe_src maybe_safe optqualified maybe_pkg modid maybeas maybeimpspec
-isImp              :: [PosToken] -> Maybe (String, [PosToken])
-isImp ts = attempt 1 (drop 1 ts)
+-- 'import' maybe_src maybe_safe optqualified maybe_pkg modid
+--                                                        maybeas maybeimpspec
+isImp :: [PosToken] -> Maybe (Import, [PosToken])
+isImp ts = attempt (1::Int) (drop 1 ts)
   where
   attempt n toks
     -- import safe qualified "package" ModId
@@ -67,21 +96,26 @@ isImp ts = attempt 1 (drop 1 ts)
     | otherwise = mplus (isMod toks) (attempt (n+1) (drop 1 toks))
 
   isMod ((ty, (_,x)) : xs) = case ty of
-                               Conid  -> Just (x,xs)
-                               Qconid -> Just (x,xs)
+                               Conid  -> Just (toImp x,xs)
+                               Qconid -> Just (toImp x,xs)
                                _      -> Nothing
   isMod _                   = Nothing
 
+  toImp x = Import { impMod = splitModName x, impType = isSrc }
+  isSrc   = case ts of
+              _ : (_,(_,x)) : _ | isSourcePragma x -> SourceImp
+              _                                    -> NormalImp
 
 
-parse              :: [PosToken] -> (ModName,[ModName])
+
+parse              :: [PosToken] -> (ModName,[Import])
 parse ((Reservedid,(_,"module")) : (_,(_,m)) : is) =
                                                   (splitModName m,imports is)
 parse is            = (([],"Main"),imports is)
 
-imports            :: [PosToken] -> [ModName]
+imports            :: [PosToken] -> [Import]
 imports ts          = case isImp $ snd $ break (("import" ==) . snd . snd) ts of
-                        Just (x,xs) -> splitModName x : imports xs
+                        Just (x,xs) -> x : imports xs
                         _           -> []
 
 -- | A hierarchical module name.
