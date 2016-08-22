@@ -4,15 +4,14 @@ import CabalSupport(parseCabalFile,Unit(..))
 
 import Text.Dot
 
-import Control.Monad(when,forM_,(<=<),mplus,msum,guard)
+import Control.Monad(when,forM_,mplus,msum,guard)
 import Control.Monad.Fix(mfix)
 import Control.Exception(catch,SomeException(..))
 import Data.List(intersperse,partition)
-import Data.Maybe(mapMaybe,isJust,fromMaybe,listToMaybe)
+import Data.Maybe(isJust,fromMaybe,listToMaybe)
 import qualified Data.IntMap as IMap
 import qualified Data.Map    as Map
 import qualified Data.IntSet as ISet
-import qualified Data.Set as Set
 import System.Environment(getArgs)
 import System.IO(hPutStrLn,stderr)
 import System.FilePath
@@ -57,9 +56,7 @@ to_input m
 type NodesC   = Trie.Trie String [((NodeT,String),Int)]
                     -- Maps a path to:   ((node, label), nodeId)
 
-type Edges      = IMap.IntMap ISet.IntSet
-type FinalEdges = IMap.IntMap (Set.Set (Int,ImpType))
-
+type Edges    = IMap.IntMap ISet.IntSet
 
 data NodeT    = ModuleNode
               | CollapsedNode Bool NodesC
@@ -68,77 +65,96 @@ data NodeT    = ModuleNode
                 -- draw edges "into" the collapsed node or not.
                 deriving (Show,Eq,Ord)
 
-graph :: Opts -> [Input] -> IO (FinalEdges, NodesC)
-graph opts inputs = fmap maybePrune $ mfix $ \ ~(_,_,mods) ->
+data AllEdges = AllEdges
+  { normalEdges   :: Edges
+  , sourceEdges   :: Edges
+  }
+
+noEdges :: AllEdges
+noEdges = AllEdges { normalEdges    = IMap.empty
+                   , sourceEdges    = IMap.empty
+                   }
+
+graph :: Opts -> [Input] -> IO (AllEdges, NodesC)
+graph opts inputs = fmap maybePrune $ mfix $ \ ~(_,mods) ->
   -- NOTE: 'mods' is the final value of 'done' in the funciton 'loop'.
 
-  let nodeFor x         = lookupNode x mods  -- Recursion happens here!
+  let nodeFor x         = lookupMod x mods    -- Recursion happens here!
 
       loop :: NodesC ->
-              Edges {- normal edges -} ->
-              Edges {- SOURCE (i.e., back) edges -} ->
-              Int   {- size -} ->
-              [Input] {- root files/modules -} ->
-              IO (Edges {- normal-}, Edges {- SOURCES -}, NodesC)
+              AllEdges    {- all kinds of edges -} ->
+              Int         {- size -} ->
+              [Input]     {- root files/modules -} ->
+              IO (AllEdges, NodesC)
 
-      loop done es bes _ [] =
-        return (es, bes, collapseAll done (collapse_quals opts))
+      loop done es _ [] =
+        return (es, collapseAll done (collapse_quals opts))
 
-      loop done es bes size (Module m : todo)
-        | ignore done m = loop done es bes size todo
+      loop done es size (Module m : todo)
+        | ignore done m = loop done es size todo
         | otherwise =
           do fs <- modToFile (inc_dirs opts) m
              case fs of
                []     -> do warn opts (notFoundMsg m)
                             if with_missing opts
-                              then add done es bes size m [] todo
-                              else loop done es bes size todo
+                              then add done es size m [] todo
+                              else loop done es size todo
                f : gs -> do when (not (null gs)) (warn opts (ambigMsg m fs))
                             (x,imps) <- parseFile f
-                            add done es bes size x imps todo
+                            add done es size x imps todo
 
-      loop done es bes size (File f : todo) =
+      loop done es size (File f : todo) =
         do (m,is) <- parseFile f
            if ignore done m
-             then loop done es bes size todo
-             else add done es bes size m is todo
+             then loop done es size todo
+             else add done es size m is todo
 
-      add done es bes size m imps ms =
-        let (sourceImps,normalImps) = partition ((== SourceImp) . impType) imps
-            srcMods                 = map impMod sourceImps
-            nrmMods                 = map impMod normalImps
+      add done es size m imps ms = size1 `seq` loop done1 es1 size1 ms1
+        where
+        es1   = case nodeFor m of
+                  Just src -> foldr (addEdge src) es imps
+                  Nothing  -> es
+        size1 = size + 1
+        ms1   = map (Module . impMod) imps ++ ms
+        done1 = insMod m size done
 
-            ms1     = map Module (srcMods ++ nrmMods) ++ ms
 
-            normIds = ISet.fromList (mapMaybe nodeFor nrmMods)
-            srcIds  = ISet.fromList (mapMaybe nodeFor srcMods)
+      addEdge nFrom i aes =
+        case nodeFor (impMod i) of
+          Nothing  -> aes
+          Just nTo ->
+            case impType i of
+              SourceImp ->
+                aes { sourceEdges = insSet nFrom nTo (sourceEdges aes) }
+              NormalImp ->
+                aes { normalEdges = insSet nFrom nTo (normalEdges aes) }
 
-            size1   = 1 + size
 
-            (es1,bes1) = case nodeFor m of
-                           Just n  -> ( IMap.insertWith ISet.union n normIds es
-                                      , IMap.insertWith ISet.union n srcIds bes
-                                      )
-                           Nothing -> (es,bes)
-        in size1 `seq` loop (insMod m size done) es1 bes1 size1 ms1
-
-      insMod (q,m) n t  = Trie.insert q (\xs -> ((ModuleNode,m),n)
-                                                          : fromMaybe [] xs) t
-      lookupMod (q,m)   = lookup (ModuleNode,m) <=< Trie.lookup q
-      ignore done m     = isIgnored (ignore_mods opts) m
-                       || isJust (lookupMod m done)
-
-  in loop Trie.empty IMap.empty IMap.empty 0 inputs
+  in loop Trie.empty noEdges 0 inputs
 
   where
-  jn xs ys = IMap.unionWith Set.union (fmap (cvt SourceImp) xs)
-                                      (fmap (cvt NormalImp) ys)
-  cvt t xs = Set.fromList [ (x, t) | x <- ISet.toList xs ]
+  maybePrune (es,ns)
+    | prune_edges opts  = (es { normalEdges = pruneEdges (normalEdges es) }, ns)
+    | otherwise         = (es,ns)
 
-  maybePrune (es,bes,ns)
-    | prune_edges opts  = (jn bes (pruneEdges es), ns)
-    | otherwise         = (jn bes es,ns)
+  ignore done m         = isIgnored (ignore_mods opts) m
+                       || isJust (lookupMod m done)
 
+
+
+
+lookupMod :: ModName -> NodesC -> Maybe Int
+lookupMod (q,m) t = lookup (ModuleNode,m) =<< Trie.lookup q t
+
+insMod :: ModName -> Int -> NodesC -> NodesC
+insMod (q,m) n t  = Trie.insert q ins t
+  where
+  ins xs = case xs of
+             Nothing -> [ ((ModuleNode,m),n) ]
+             Just ys -> ((ModuleNode,m),n) : ys
+
+insSet :: Int -> Int -> Edges -> Edges
+insSet x y m = IMap.insertWith ISet.union x (ISet.singleton y) m
 
 
 
@@ -173,25 +189,9 @@ isIgnored (Trie.Sub ts _)                     (q:qs,m) =
     Nothing -> False
     Just t  -> isIgnored t (qs,m)
 
-lookupNode :: ModName -> NodesC -> Maybe Int
-lookupNode ([],m) (Trie.Sub _ mb) = lookupBy (containsModule m) =<< mb
-
-lookupNode (q:qs,m) (Trie.Sub ts mb) =
-  (lookupBy containsNode =<< mb) `mplus`
-  (lookupNode (qs,m) =<< Map.lookup q ts)
-
-  where
-  containsNode :: (NodeT, String) -> Bool
-  containsNode (CollapsedNode _ t, q1) = q == q1 && isJust (lookupNode (qs,m) t)
-  containsNode (ModuleNode, _)         = False
-
 containsModule :: String -> (NodeT, String) -> Bool
 containsModule q (ModuleNode, q1)              = q == q1
 containsModule q (CollapsedNode withMod _, q1) = withMod && q == q1
-
-lookupBy :: (a -> Bool) -> [(a,b)] -> Maybe b
-lookupBy p xs = listToMaybe [ y | (x,y) <- xs, p x ]
-
 
 
 
@@ -242,19 +242,26 @@ collapse (Trie.Sub ts ms) (q : qs,x) =
 
 -- Render edges and a trie into the dot language
 --------------------------------------------------------------------------------
-make_dot :: String -> Int -> Bool -> (FinalEdges,NodesC) -> String
+make_dot :: String -> Int -> Bool -> (AllEdges,NodesC) -> String
 make_dot sz col cl (es,t) =
   showDot $
   do attribute ("size", sz)
      attribute ("ratio", "fill")
      if cl then make_clustered_dot (colors col) t
            else make_unclustered_dot (colors col) "" t >> return ()
-     forM_ (IMap.toList es) $ \(x,ys) ->
-       forM_ (Set.toList ys) $ \(y,t) ->
-          let attrs = case t of
-                        NormalImp -> []
-                        SourceImp -> [("style","dashed")]
-          in edge (userNodeId x) (userNodeId y) attrs
+     genEdges normalAttr (normalEdges es)
+     genEdges sourceAttr (sourceEdges es)
+  where
+  normalAttr _x _y  = []
+  sourceAttr _x _y  = [("style","dashed")]
+
+  genEdges attr edges =
+    forM_ (IMap.toList edges) $ \(x,ys) ->
+      forM_ (ISet.toList ys) $ \y ->
+        edge (userNodeId x) (userNodeId y) (attr x y)
+
+
+
 
 
 
@@ -270,8 +277,8 @@ make_clustered_dot c (Trie.Sub xs ys) =
                                   , ("color", col)
                                   ]
          CollapsedNode True  _ -> [ ("shape", "box")
-                                  , ("fillcolor", col)
                                   , ("style","filled")
+                                  , ("fillcolor", col)
                                   ]
          ModuleNode            -> []
 
@@ -288,15 +295,15 @@ make_unclustered_dot c pre (Trie.Sub xs ys') =
   do let col = renderColor (head c)
      let ys = fromMaybe [] ys'
      forM_ ys $ \((t,ls),n) ->
-        userNode (userNodeId n) $
-              [ ("fillcolor", col)
-              , ("style", "filled")
-              , ("label", pre ++ ls)
-              ] ++
-            case t of
-              CollapsedNode False _ -> [ ("shape", "box"), ("color", col) ]
-              CollapsedNode True  _ -> [ ("shape", "box") ]
-              ModuleNode            -> []
+       userNode (userNodeId n) $
+           [ ("fillcolor", col)
+           , ("style", "filled")
+           , ("label", pre ++ ls)
+           ] ++
+         case t of
+           CollapsedNode False _ -> [ ("shape", "box"), ("color", col) ]
+           CollapsedNode True  _ -> [ ("shape", "box") ]
+           ModuleNode            -> []
 
      let c1 = if null ys then c else tail c
      c1 `seq` loop (Map.toList xs) c1
