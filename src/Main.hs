@@ -7,7 +7,7 @@ import Text.Dot
 import Control.Monad(when,forM_,mplus,msum,guard)
 import Control.Monad.Fix(mfix)
 import Control.Exception(catch,SomeException(..))
-import Data.List(intersperse,partition)
+import Data.List(intersperse,partition,transpose)
 import Data.Maybe(isJust,fromMaybe,listToMaybe)
 import qualified Data.IntMap as IMap
 import qualified Data.Map    as Map
@@ -33,8 +33,7 @@ main = do xs <- getArgs
                   do (incs,inps) <- fromCabal (use_cabal opts)
                      g <- graph (foldr add_inc (add_current opts) incs)
                                 (inps ++ map to_input ms)
-                     putStr (make_dot (graph_size opts) (color_scheme opts)
-                                                      (use_clusters opts) g)
+                     putStr (make_dot opts g)
               where opts = foldr ($) default_opts fs
 
             _ -> hPutStrLn stderr $
@@ -52,13 +51,13 @@ to_input m
 
 
 
--- type Nodes    = Trie.Trie String [(String,Int)]
 type NodesC   = Trie.Trie String [((NodeT,String),Int)]
                     -- Maps a path to:   ((node, label), nodeId)
 
 type Edges    = IMap.IntMap ISet.IntSet
 
 data NodeT    = ModuleNode
+              | ModuleInItsCluster
               | CollapsedNode Bool NodesC
                 -- ^ indicates if it contains module too.
                 -- Also includes the collapsed tree, so we know whether to
@@ -190,7 +189,9 @@ isIgnored (Trie.Sub ts _)                     (q:qs,m) =
     Just t  -> isIgnored t (qs,m)
 
 containsModule :: String -> (NodeT, String) -> Bool
-containsModule q (ModuleNode, q1)              = q == q1
+containsModule q (ModuleNode, q1)             = q == q1
+containsModule _ (ModuleInItsCluster, _) =
+  error "[bug] ModuleInItsCluster while collapsing"
 containsModule q (CollapsedNode withMod _, q1) = withMod && q == q1
 
 
@@ -234,6 +235,40 @@ collapse (Trie.Sub ts ms) (q : qs,x) =
 
 
 
+-- | If inside cluster A.B we have a module M,
+-- and there is a cluster A.B.M, then move M into that cluster as a special node
+moveModulesInCluster :: NodesC -> NodesC
+moveModulesInCluster (Trie.Sub su0 ms) = goMb (fmap moveModulesInCluster su0) ms
+  where
+  goMb su mb =
+    case mb of
+      Nothing -> Trie.Sub su Nothing
+      Just xs -> go [] su xs
+
+  go ns su xs =
+    case xs of
+      [] -> Trie.Sub su $ case ns of
+                            [] -> Nothing
+                            _  -> Just ns
+      y : ys ->
+        case check y su of
+          Left it   -> go (it : ns) su ys
+          Right su1 -> go ns su1 ys
+
+  check it@((nt,s),i) mps =
+    case nt of
+      ModuleNode ->
+        case Map.lookup s mps of
+          Nothing -> Left it
+          Just t  -> Right $ Map.insert s (Trie.insert [] add t) mps
+            where
+            newM   = ((ModuleInItsCluster,s),i)
+            add xs = [newM] ++ fromMaybe [] xs
+
+
+      ModuleInItsCluster -> Left it
+      CollapsedNode _ _  -> Left it
+
 
 -- We use tries to group modules by directory.
 --------------------------------------------------------------------------------
@@ -242,13 +277,16 @@ collapse (Trie.Sub ts ms) (q : qs,x) =
 
 -- Render edges and a trie into the dot language
 --------------------------------------------------------------------------------
-make_dot :: String -> Int -> Bool -> (AllEdges,NodesC) -> String
-make_dot sz col cl (es,t) =
+make_dot :: Opts -> (AllEdges,NodesC) -> String
+make_dot opts (es,t) =
   showDot $
-  do attribute ("size", sz)
+  do attribute ("size", graph_size opts)
      attribute ("ratio", "fill")
-     if cl then make_clustered_dot (colors col) t
-           else make_unclustered_dot (colors col) "" t >> return ()
+     let cols = colors (color_scheme opts)
+     if use_clusters opts
+        then make_clustered_dot cols $
+               if mod_in_cluster opts then moveModulesInCluster t else t
+        else make_unclustered_dot cols "" t >> return ()
      genEdges normalAttr (normalEdges es)
      genEdges sourceAttr (sourceEdges es)
   where
@@ -266,28 +304,44 @@ make_dot sz col cl (es,t) =
 
 
 make_clustered_dot :: [Color] -> NodesC -> Dot ()
-make_clustered_dot c (Trie.Sub xs ys) =
-  do let col = renderColor (head c)
-     forM_ (fromMaybe [] ys) $ \((t,ls),n) ->
-       userNode (userNodeId n) $
-       [ ("label",ls) ] ++
-       case t of
-         CollapsedNode False _ -> [ ("shape", "box")
-                                  , ("style","filled")
-                                  , ("color", col)
-                                  ]
-         CollapsedNode True  _ -> [ ("shape", "box")
-                                  , ("style","filled")
-                                  , ("fillcolor", col)
-                                  ]
-         ModuleNode            -> []
+make_clustered_dot cs su = go (0,0,0) cs su >> return ()
+  where
+  clusterC = "#0000000F"
 
-     forM_ (Map.toList xs) $ \(name,sub) ->
-       cluster $
-       do attribute ("label", name)
-          attribute ("color" , col)
-          attribute ("style", "filled")
-          make_clustered_dot (tail c) sub
+  go outer_col ~(this_col:more) (Trie.Sub xs ys) =
+    do let outerC = renderColor outer_col
+           thisC  = renderColor this_col
+
+       forM_ (fromMaybe [] ys) $ \((t,ls),n) ->
+         userNode (userNodeId n) $
+         [ ("label",ls) ] ++
+         case t of
+           CollapsedNode False _ -> [ ("shape", "box")
+                                    , ("style","filled")
+                                    , ("color", clusterC)
+                                    ]
+           CollapsedNode True  _ -> [ ("shape", "box")
+                                    , ("style","filled")
+                                    , ("fillcolor", clusterC)
+                                    ]
+           ModuleInItsCluster    -> [ ("style","filled,bold")
+                                    , ("fillcolor", outerC)
+                                    ]
+
+           ModuleNode            -> [ ("style", "filled")
+                                    , ("fillcolor", thisC)
+                                    , ("penwidth","0")
+                                    ]
+       goSub this_col more (Map.toList xs)
+
+  goSub _ cs [] = return cs
+  goSub outer_col cs ((name,sub) : more) =
+    do (_,cs1) <- cluster $ do attribute ("label", name)
+                               attribute ("color" , clusterC)
+                               attribute ("style", "filled")
+                               go outer_col cs sub
+
+       goSub outer_col cs1 more
 
 
 make_unclustered_dot :: [Color] -> String -> NodesC -> Dot [Color]
@@ -303,6 +357,7 @@ make_unclustered_dot c pre (Trie.Sub xs ys') =
          case t of
            CollapsedNode False _ -> [ ("shape", "box"), ("color", col) ]
            CollapsedNode True  _ -> [ ("shape", "box") ]
+           ModuleInItsCluster    -> error "[bug]: Cluster in unclustered mode"
            ModuleNode            -> []
 
      let c1 = if null ys then c else tail c
@@ -318,25 +373,25 @@ make_unclustered_dot c pre (Trie.Sub xs ys') =
 type Color = (Int,Int,Int)
 
 colors :: Int -> [Color]
-colors n = light_dark $ drop n $ cycle colorses
+colors n = cycle $ mix_colors $ drop n $ palettes
 
 renderColor :: Color -> String
 renderColor (x,y,z) = '#' : showHex (mk x) (showHex (mk y) (showHex (mk z) ""))
-  where mk n = 0xFF - n * 0x33
+  where mk n = 0xFF - n * 0x44
 
 
-light_dark :: [[a]] -> [a]
-light_dark (xs : ys : zs) = xs ++ reverse ys ++ light_dark zs
-light_dark [x]            = x
-light_dark []             = []
+mix_colors :: [[a]] -> [a]
+mix_colors css = mk set1 ++ mk set2
+  where
+  (set1,set2) = unzip $ map (splitAt 3) css
+  mk = concat . transpose
 
 
-
-colorses :: [[Color]]
-colorses = [green, cyan, blue, magenta, red, yellow]
+palettes :: [[Color]]
+palettes = [green, yellow, blue, red, cyan, magenta ]
   where
   red :: [Color]
-  red   = [ (0,1,1), (0,2,2), (0,3,3), (1,2,2), (1,3,3), (2,3,3) ]
+  red   = [ (0,1,1), (0,2,2), (0,3,3), (1,2,3), (1,3,3), (2,3,3) ]
   green = map rotR red
   blue  = map rotR green
   [cyan,magenta,yellow] = map (map compl . reverse) [red, green, blue]
@@ -391,6 +446,7 @@ data Opts = Opts
   , quiet         :: Bool
   , with_missing  :: Bool
   , use_clusters  :: Bool
+  , mod_in_cluster:: Bool
   , ignore_mods   :: IgnoreSet
   , collapse_quals :: Trie.Trie String Bool
     -- ^ The "Bool" tells us if we should collapse modules as well.
@@ -415,6 +471,7 @@ default_opts = Opts
   , quiet           = False
   , with_missing    = False
   , use_clusters    = True
+  , mod_in_cluster  = True
   , ignore_mods     = Trie.empty
   , collapse_quals  = Trie.empty
   , show_version    = False
@@ -437,6 +494,9 @@ options =
 
   , Option []    ["no-cluster"] (NoArg set_no_cluster)
     "Do not cluster directories"
+
+  , Option []    ["no-module-in-cluster"] (NoArg set_no_mod_in_cluster)
+    "Do not place modules matching a cluster's name inside it."
 
   , Option ['r'] ["remove-module"] (ReqArg add_ignore_mod "NAME")
     "Do not display module NAME"
@@ -482,6 +542,9 @@ set_all o         = o { with_missing = True }
 
 set_no_cluster   :: OptT
 set_no_cluster o  = o { use_clusters = False }
+
+set_no_mod_in_cluster :: OptT
+set_no_mod_in_cluster o = o { mod_in_cluster = False }
 
 add_inc          :: FilePath -> OptT
 add_inc d o       = o { inc_dirs = d : inc_dirs o }
