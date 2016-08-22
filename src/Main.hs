@@ -304,7 +304,7 @@ make_dot opts (es,t) =
 
 
 make_clustered_dot :: [Color] -> NodesC -> Dot ()
-make_clustered_dot cs su = go (0,0,0) cs su >> return ()
+make_clustered_dot cs0 su = go (0,0,0) cs0 su >> return ()
   where
   clusterC = "#0000000F"
 
