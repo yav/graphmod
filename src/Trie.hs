@@ -17,3 +17,6 @@ insert :: (Ord a) => [a] -> (Maybe b -> b) -> Trie a b -> Trie a b
 insert [] f (Sub as b)     = Sub as (Just (f b))
 insert (k:ks) f (Sub as b) = Sub (Map.alter upd k as) b
   where upd j = Just $ insert ks f $ fromMaybe empty j
+
+instance Functor (Trie a) where
+  fmap f (Sub m mb) = Sub (fmap (fmap f) m) (fmap f mb)

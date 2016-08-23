@@ -1,13 +1,12 @@
 import Utils
 import qualified Trie
 import CabalSupport(parseCabalFile,Unit(..))
-
 import Text.Dot
 
-import Control.Monad(when,forM_,mplus,msum,guard)
+import Control.Monad(when,forM_,msum,guard,unless)
 import Control.Monad.Fix(mfix)
 import Control.Exception(catch,SomeException(..))
-import Data.List(intersperse,partition,transpose)
+import Data.List(intersperse,transpose)
 import Data.Maybe(isJust,fromMaybe,listToMaybe)
 import qualified Data.IntMap as IMap
 import qualified Data.Map    as Map
@@ -51,17 +50,26 @@ to_input m
 
 
 
-type NodesC   = Trie.Trie String [((NodeT,String),Int)]
+type Nodes   = Trie.Trie String [((NodeT,String),Int)]
                     -- Maps a path to:   ((node, label), nodeId)
 
 type Edges    = IMap.IntMap ISet.IntSet
 
 data NodeT    = ModuleNode
+
               | ModuleInItsCluster
-              | CollapsedNode Bool NodesC
+                -- ^ A module that has been relocated to its cluster
+
+              | Redirect
+                -- ^ This is not rendered. It is there to support replacing
+                -- one node with another (e.g., when collapsing)
+
+              | Deleted
+                -- ^ This is not rendered, and edges to/from it are also
+                -- not rendered.
+
+              | CollapsedNode Bool
                 -- ^ indicates if it contains module too.
-                -- Also includes the collapsed tree, so we know whether to
-                -- draw edges "into" the collapsed node or not.
                 deriving (Show,Eq,Ord)
 
 data AllEdges = AllEdges
@@ -74,20 +82,20 @@ noEdges = AllEdges { normalEdges    = IMap.empty
                    , sourceEdges    = IMap.empty
                    }
 
-graph :: Opts -> [Input] -> IO (AllEdges, NodesC)
+graph :: Opts -> [Input] -> IO (AllEdges, Nodes)
 graph opts inputs = fmap maybePrune $ mfix $ \ ~(_,mods) ->
   -- NOTE: 'mods' is the final value of 'done' in the funciton 'loop'.
 
   let nodeFor x         = lookupMod x mods    -- Recursion happens here!
 
-      loop :: NodesC ->
+      loop :: Nodes ->
               AllEdges    {- all kinds of edges -} ->
               Int         {- size -} ->
               [Input]     {- root files/modules -} ->
-              IO (AllEdges, NodesC)
+              IO (AllEdges, Nodes)
 
       loop done es _ [] =
-        return (es, collapseAll done (collapse_quals opts))
+              return (es, collapseAll opts done (collapse_quals opts))
 
       loop done es size (Module m : todo)
         | ignore done m = loop done es size todo
@@ -142,10 +150,15 @@ graph opts inputs = fmap maybePrune $ mfix $ \ ~(_,mods) ->
 
 
 
-lookupMod :: ModName -> NodesC -> Maybe Int
-lookupMod (q,m) t = lookup (ModuleNode,m) =<< Trie.lookup q t
+lookupMod :: ModName -> Nodes -> Maybe Int
+lookupMod (q,m) t = (msum . map isThis =<< Trie.lookup q t)
+  where isThis ((ty,m'),nid) =
+          case ty of
+            CollapsedNode False -> Nothing -- Keep looking for the actual node
+            Deleted             -> Nothing
+            _                   -> guard (m == m') >> return nid
 
-insMod :: ModName -> Int -> NodesC -> NodesC
+insMod :: ModName -> Int -> Nodes -> Nodes
 insMod (q,m) n t  = Trie.insert q ins t
   where
   ins xs = case xs of
@@ -188,18 +201,12 @@ isIgnored (Trie.Sub ts _)                     (q:qs,m) =
     Nothing -> False
     Just t  -> isIgnored t (qs,m)
 
-containsModule :: String -> (NodeT, String) -> Bool
-containsModule q (ModuleNode, q1)             = q == q1
-containsModule _ (ModuleInItsCluster, _) =
-  error "[bug] ModuleInItsCluster while collapsing"
-containsModule q (CollapsedNode withMod _, q1) = withMod && q == q1
-
-
 
 -- XXX: We could combine collapseAll and collapse into a single pass
 -- to avoid traversing form the root each time.
-collapseAll :: NodesC -> Trie.Trie String Bool -> NodesC
-collapseAll t0 = foldr (\q t -> fromMaybe t (collapse t q)) t0 . toList
+collapseAll :: Opts -> Nodes -> Trie.Trie String Bool -> Nodes
+collapseAll opts t0 =
+  foldr (\q t -> fromMaybe t (collapse opts t q)) t0 . toList
   where
   toList (Trie.Sub _ (Just x))  = return ([], x)
   toList (Trie.Sub as Nothing)  = do (q,t)  <- Map.toList as
@@ -207,38 +214,48 @@ collapseAll t0 = foldr (\q t -> fromMaybe t (collapse t q)) t0 . toList
                                      return (q:qs, x)
 
 -- NOTE: We use the Maybe type to indicate when things changed.
-collapse :: NodesC -> (Qualifier,Bool) -> Maybe NodesC
-collapse _ ([],_) = return Trie.empty      -- Probably not terribly useful.
+collapse :: Opts -> Nodes -> (Qualifier,Bool) -> Maybe Nodes
+collapse _ _ ([],_) = return Trie.empty      -- Probably not terribly useful.
 
-collapse (Trie.Sub ts mb) ([q],alsoMod) =
-  do (n,withMod) <- fmap (\x -> (x,True)) useMod
-            `mplus` fmap (\x -> (x,False)) (getFirst =<< thisTrie)
+collapse opts (Trie.Sub ts mb) ([q],alsoMod) =
+  do t   <- Map.lookup q ts
+     let will_move = mod_in_cluster opts && Map.member q ts
+         (thisMod,otherMods)
+            | alsoMod || will_move = case findThisMod =<< mb of
+                                       Nothing         -> (Nothing, [])
+                                       Just (nid,rest) -> (Just nid, rest)
+            | otherwise = (Nothing, fromMaybe [] mb)
 
-     return $ Trie.Sub (Map.delete q ts)
-            $ Just $ ((CollapsedNode withMod collapsedTrie, q),n)
-                   : if withMod then others else allNodes
+     -- use this node-id to represent the collapsed cluster
+     rep <- msum [ thisMod, getFirst t ]
 
-  where thisTrie          = Map.lookup q ts
-        collapsedTrie     = fromMaybe Trie.empty thisTrie
-        allNodes          = fromMaybe [] mb
-        (thisNode,others) = partition (containsModule q . fst) allNodes
-        useMod            = do guard alsoMod
-                               listToMaybe (map snd thisNode)
+     let close ((_,nm),_) = ((if will_move then Deleted else Redirect,nm),rep)
+         ts'              = Map.insert q (fmap (map close) t) ts
+         newT | alsoMod || not will_move = CollapsedNode (isJust thisMod)
+              | otherwise                = ModuleNode
 
-        getFirst (Trie.Sub ts1 ms) =
-          msum (fmap snd (listToMaybe =<< ms) : map getFirst (Map.elems ts1))
+     return (Trie.Sub ts' (Just (((newT,q),rep) : otherMods)))
+  where
+  findThisMod (((_,nm),nid) : more) | nm == q = Just (nid,more)
+  findThisMod (x : more) = do (yes,more') <- findThisMod more
+                              return (yes, x:more')
+  findThisMod []         = Nothing
 
-collapse (Trie.Sub ts ms) (q : qs,x) =
+  getFirst (Trie.Sub ts1 ms) =
+    msum (fmap snd (listToMaybe =<< ms) : map getFirst (Map.elems ts1))
+
+collapse opts (Trie.Sub ts ms) (q : qs,x) =
   do t <- Map.lookup q ts
-     t1 <- collapse t (qs,x)
+     t1 <- collapse opts t (qs,x)
      return (Trie.Sub (Map.insert q t1 ts) ms)
 
 
 
 -- | If inside cluster A.B we have a module M,
 -- and there is a cluster A.B.M, then move M into that cluster as a special node
-moveModulesInCluster :: NodesC -> NodesC
-moveModulesInCluster (Trie.Sub su0 ms) = goMb (fmap moveModulesInCluster su0) ms
+moveModulesInCluster :: Nodes -> Nodes
+moveModulesInCluster (Trie.Sub su0 ms0) =
+  goMb (fmap moveModulesInCluster su0) ms0
   where
   goMb su mb =
     case mb of
@@ -247,9 +264,7 @@ moveModulesInCluster (Trie.Sub su0 ms) = goMb (fmap moveModulesInCluster su0) ms
 
   go ns su xs =
     case xs of
-      [] -> Trie.Sub su $ case ns of
-                            [] -> Nothing
-                            _  -> Just ns
+      [] -> Trie.Sub su $ if null ns then Nothing else Just ns
       y : ys ->
         case check y su of
           Left it   -> go (it : ns) su ys
@@ -260,14 +275,16 @@ moveModulesInCluster (Trie.Sub su0 ms) = goMb (fmap moveModulesInCluster su0) ms
       ModuleNode ->
         case Map.lookup s mps of
           Nothing -> Left it
-          Just t  -> Right $ Map.insert s (Trie.insert [] add t) mps
+          Just t  -> Right (Map.insert s (Trie.insert [] add t) mps)
             where
             newM   = ((ModuleInItsCluster,s),i)
             add xs = [newM] ++ fromMaybe [] xs
 
 
-      ModuleInItsCluster -> Left it
-      CollapsedNode _ _  -> Left it
+      ModuleInItsCluster    -> Left it
+      CollapsedNode _       -> Left it
+      Redirect              -> Left it
+      Deleted               -> Left it
 
 
 -- We use tries to group modules by directory.
@@ -277,7 +294,7 @@ moveModulesInCluster (Trie.Sub su0 ms) = goMb (fmap moveModulesInCluster su0) ms
 
 -- Render edges and a trie into the dot language
 --------------------------------------------------------------------------------
-make_dot :: Opts -> (AllEdges,NodesC) -> String
+make_dot :: Opts -> (AllEdges,Nodes) -> String
 make_dot opts (es,t) =
   showDot $
   do attribute ("size", graph_size opts)
@@ -303,7 +320,7 @@ make_dot opts (es,t) =
 
 
 
-make_clustered_dot :: [Color] -> NodesC -> Dot ()
+make_clustered_dot :: [Color] -> Nodes -> Dot ()
 make_clustered_dot cs0 su = go (0,0,0) cs0 su >> return ()
   where
   clusterC = "#0000000F"
@@ -313,15 +330,15 @@ make_clustered_dot cs0 su = go (0,0,0) cs0 su >> return ()
            thisC  = renderColor this_col
 
        forM_ (fromMaybe [] ys) $ \((t,ls),n) ->
+         unless (t == Redirect || t == Deleted) $
          userNode (userNodeId n) $
          [ ("label",ls) ] ++
          case t of
-           CollapsedNode False _ -> [ ("shape", "box")
+           CollapsedNode False ->   [ ("shape", "box")
                                     , ("style","filled")
                                     , ("color", clusterC)
                                     ]
-           CollapsedNode True  _ -> [ ("shape", "box")
-                                    , ("style","filled")
+           CollapsedNode True    -> [ ("style","filled")
                                     , ("fillcolor", clusterC)
                                     ]
            ModuleInItsCluster    -> [ ("style","filled,bold")
@@ -332,6 +349,8 @@ make_clustered_dot cs0 su = go (0,0,0) cs0 su >> return ()
                                     , ("fillcolor", thisC)
                                     , ("penwidth","0")
                                     ]
+           Redirect              -> []
+           Deleted               -> []
        goSub this_col more (Map.toList xs)
 
   goSub _ cs [] = return cs
@@ -344,7 +363,7 @@ make_clustered_dot cs0 su = go (0,0,0) cs0 su >> return ()
        goSub outer_col cs1 more
 
 
-make_unclustered_dot :: [Color] -> String -> NodesC -> Dot [Color]
+make_unclustered_dot :: [Color] -> String -> Nodes -> Dot [Color]
 make_unclustered_dot c pre (Trie.Sub xs ys') =
   do let col = renderColor (head c)
      let ys = fromMaybe [] ys'
@@ -355,10 +374,12 @@ make_unclustered_dot c pre (Trie.Sub xs ys') =
            , ("label", pre ++ ls)
            ] ++
          case t of
-           CollapsedNode False _ -> [ ("shape", "box"), ("color", col) ]
-           CollapsedNode True  _ -> [ ("shape", "box") ]
-           ModuleInItsCluster    -> error "[bug]: Cluster in unclustered mode"
+           CollapsedNode False   -> [ ("shape", "box"), ("color", col) ]
+           CollapsedNode True    -> [ ("shape", "box") ]
+           Redirect              -> []
+           ModuleInItsCluster    -> []
            ModuleNode            -> []
+           Deleted               -> []
 
      let c1 = if null ys then c else tail c
      c1 `seq` loop (Map.toList xs) c1
