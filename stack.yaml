@@ -3,4 +3,4 @@ packages:
 - '.'
 extra-deps:
 - dotgen-0.4.2
-- haskell-lexer-1.0
+- haskell-lexer-1.0.1
