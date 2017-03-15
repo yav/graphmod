@@ -15,6 +15,7 @@ module Utils
 
 import Language.Haskell.Lexer(lexerPass0,Token(..),PosToken,line)
 
+import Control.DeepSeq
 import Control.Monad(mplus)
 import Data.Maybe(catMaybes)
 import Data.List(intersperse,isPrefixOf)
@@ -30,7 +31,7 @@ data ImpType = NormalImp | SourceImp
 -- | Get the imports of a file.
 parseFile          :: FilePath -> IO (ModName,[Import])
 parseFile f =
-  do (modName, imps) <- (parseString . get_text) `fmap` readFile f
+  do (modName, imps) <- (parseString . get_text . force) `fmap` readFile f
      if ext == ".imports"
        then return (splitModName (takeBaseName f), imps)
        else return (modName, imps)
