@@ -19,7 +19,7 @@ executable graphmod
     main-is:         Main.hs
     other-modules:   Utils, Trie, Paths_graphmod, CabalSupport
     build-depends:   base < 5, directory, filepath, dotgen >= 0.2 && < 0.5,
-                     haskell-lexer >= 1.0.1, containers, Cabal
+                     haskell-lexer >= 1.0.1, containers, Cabal, deepseq
     hs-source-dirs:  src
     ghc-options:     -Wall -O2
 
