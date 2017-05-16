@@ -16,6 +16,7 @@ module Utils
 import Language.Haskell.Lexer(lexerPass0,Token(..),PosToken,line)
 
 import Control.Monad(mplus)
+import Control.Exception(evaluate)
 import Data.Maybe(catMaybes)
 import Data.List(intersperse,isPrefixOf)
 import System.Directory(doesFileExist)
@@ -31,6 +32,7 @@ data ImpType = NormalImp | SourceImp
 parseFile          :: FilePath -> IO (ModName,[Import])
 parseFile f =
   do (modName, imps) <- (parseString . get_text) `fmap` readFile f
+     evaluate (length imps) -- this is here so that the file gets closed
      if ext == ".imports"
        then return (splitModName (takeBaseName f), imps)
        else return (modName, imps)
