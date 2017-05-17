@@ -5,7 +5,8 @@ import Text.Dot
 
 import Control.Monad(when,forM_,msum,guard,unless)
 import Control.Monad.Fix(mfix)
-import Control.Exception(catch,SomeException(..))
+import           Control.Exception (SomeException(..))
+import qualified Control.Exception as X (catch)
 import Data.List(intersperse,transpose)
 import Data.Maybe(isJust,fromMaybe,listToMaybe)
 import qualified Data.IntMap as IMap
@@ -444,7 +445,7 @@ fromCabal True =
   do fs <- getDirectoryContents "." -- XXX
      case filter ((".cabal" ==) . takeExtension) fs of
        f : _ -> do units <- parseCabalFile f
-                              `catch` \SomeException {} -> return []
+                              `X.catch` \SomeException {} -> return []
                    return (fromUnits units)
        _ -> return ([],[])
 fromCabal _ = return ([],[])
