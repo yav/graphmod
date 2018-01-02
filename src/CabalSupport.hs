@@ -1,3 +1,5 @@
+{-# language CPP #-}
+
 module CabalSupport (parseCabalFile,Unit(..),UnitName(..)) where
 
 import Utils(ModName)
@@ -6,7 +8,6 @@ import Data.Maybe(maybeToList)
 import System.FilePath((</>))
 
 -- Interface to cabal.
-import Distribution.PackageDescription.Parse(readPackageDescription)
 import Distribution.Verbosity(silent)
 import Distribution.PackageDescription
         ( GenericPackageDescription, PackageDescription(..)
@@ -14,11 +15,28 @@ import Distribution.PackageDescription
 import Distribution.PackageDescription.Configuration (flattenPackageDescription)
 import Distribution.ModuleName(ModuleName,components)
 
+#if MIN_VERSION_Cabal(2,0,0)
+import Distribution.PackageDescription.Parse(readGenericPackageDescription)
+import Distribution.Types.UnqualComponentName (UnqualComponentName)
+import Distribution.Text (disp)
+import Text.PrettyPrint (render)
 
+pretty :: UnqualComponentName -> String
+pretty = render . disp
+#else
+import Distribution.PackageDescription.Parse(readPackageDescription)
+import Distribution.Verbosity (Verbosity)
+
+readGenericPackageDescription :: Verbosity -> FilePath -> IO GenericPackageDescription
+readGenericPackageDescription = readPackageDescription
+
+pretty :: String -> String
+pretty = id
+#endif
 
 
 parseCabalFile :: FilePath -> IO [Unit]
-parseCabalFile f = fmap findUnits (readPackageDescription silent f)
+parseCabalFile f = fmap findUnits (readGenericPackageDescription silent f)
 
 
 -- | This is our abstraction for something in a cabal file.
@@ -42,7 +60,7 @@ libUnit lib = Unit { unitName     = UnitLibrary
                    }
 
 exeUnit :: Executable -> Unit
-exeUnit exe = Unit { unitName    = UnitExecutable (exeName exe)
+exeUnit exe = Unit { unitName    = UnitExecutable (pretty $ exeName exe)
                    , unitPaths   = hsSourceDirs (buildInfo exe)
                    , unitModules = [] -- other modules?
                    , unitFiles   = case hsSourceDirs (buildInfo exe) of
@@ -60,5 +78,3 @@ findUnits g = maybeToList (fmap libUnit (library pkg))  ++
                            fmap exeUnit (executables pkg)
   where
   pkg = flattenPackageDescription g -- we just ignore flags
-
-
