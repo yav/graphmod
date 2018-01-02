@@ -1,3 +1,8 @@
+* Version 1.4.1
+  - Support for Cabal 2
+  - Updates to build infrastructure
+  - Fixes memory leak
+
 * Version 1.3
   - Corrects collapsing logic.
   - Change node coloring in clusters:
