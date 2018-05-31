@@ -16,7 +16,11 @@ import Distribution.PackageDescription.Configuration (flattenPackageDescription)
 import Distribution.ModuleName(ModuleName,components)
 
 #if MIN_VERSION_Cabal(2,0,0)
+#if MIN_VERSION_Cabal(2,2,0)
+import Distribution.PackageDescription.Parsec(readGenericPackageDescription)
+#else
 import Distribution.PackageDescription.Parse(readGenericPackageDescription)
+#endif
 import Distribution.Types.UnqualComponentName (UnqualComponentName)
 import Distribution.Text (disp)
 import Text.PrettyPrint (render)
