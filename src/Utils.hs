@@ -18,7 +18,7 @@ import Language.Haskell.Lexer(lexerPass0,Token(..),PosToken,line)
 import Control.Monad(mplus)
 import Control.Exception(evaluate)
 import Data.Maybe(catMaybes)
-import Data.List(intersperse,isPrefixOf)
+import Data.List(intersperse,isPrefixOf,nub)
 import System.Directory(doesFileExist)
 import System.FilePath
 
@@ -152,7 +152,7 @@ suffixes            = [".hs",".lhs", ".imports"]
 -- | The files in which a module might reside.
 -- We report only files that exist.
 modToFile          :: [FilePath] -> ModName -> IO [FilePath]
-modToFile dirs m    = catMaybes `fmap` mapM check paths
+modToFile dirs m    = (nub . catMaybes) `fmap` mapM check paths
   where
   paths             = [ d </> r | d <- dirs, r <- relPaths m ]
   check p           = do x <- doesFileExist p
