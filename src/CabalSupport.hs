@@ -22,11 +22,10 @@ import Distribution.PackageDescription.Parsec(readGenericPackageDescription)
 import Distribution.PackageDescription.Parse(readGenericPackageDescription)
 #endif
 import Distribution.Types.UnqualComponentName (UnqualComponentName)
-import Distribution.Text (disp)
-import Text.PrettyPrint (render)
+import Distribution.Pretty (prettyShow)
 
 pretty :: UnqualComponentName -> String
-pretty = render . disp
+pretty = prettyShow
 #else
 import Distribution.PackageDescription.Parse(readPackageDescription)
 import Distribution.Verbosity (Verbosity)
