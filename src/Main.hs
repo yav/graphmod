@@ -1,13 +1,15 @@
+{-# LANGUAGE MultiWayIf #-}
 import Utils
 import qualified Trie
 import CabalSupport(parseCabalFile,Unit(..))
 import Text.Dot
 
-import Control.Monad(when,forM_,msum,guard,unless)
+import Control.Arrow((***),first)
+import Control.Monad(when,forM_,mapM_,msum,guard,unless)
 import Control.Monad.Fix(mfix)
 import           Control.Exception (SomeException(..))
 import qualified Control.Exception as X (catch)
-import Data.List(intersperse,transpose)
+import Data.List(intersperse,intersect,intercalate,transpose,(\\),nub,elemIndex)
 import Data.Maybe(isJust,fromMaybe,listToMaybe)
 import qualified Data.IntMap as IMap
 import qualified Data.Map    as Map
@@ -19,26 +21,32 @@ import System.Console.GetOpt
 import System.Directory(getDirectoryContents)
 import Numeric(showHex)
 
-import Paths_graphmod (version)
+-- import Paths_graphmod (version)
 import Data.Version (showVersion)
 
 main :: IO ()
 main = do xs <- getArgs
           let (fs, ms, errs) = getOpt Permute options xs
+              opts = foldr ($) default_opts fs
           case errs of
             [] | show_version opts ->
-                  putStrLn ("graphmod " ++ showVersion version)
+                  putStrLn ("graphmod ")
 
-               | otherwise ->
-                  do (incs,inps) <- fromCabal (use_cabal opts)
-                     g <- graph (foldr add_inc (add_current opts) incs)
-                                (inps ++ map to_input ms)
-                     putStr (make_dot opts g)
-              where opts = foldr ($) default_opts fs
+               | otherwise -> do
+                   (incs,inps) <- fromCabal (use_cabal opts)
+                   g@(AllEdges normalE sourceE, nodes)
+                     <- graph (foldr add_inc (add_current opts) incs)
+                              (inps ++ map to_input ms)
+
+                   if | mode_toposort opts ->
+                        mapM_ putStrLn $ fmap (intercalate ".") $ resolveNodes nodes $ toposort $ IMap.toList (ISet.toList <$> normalE)
+                        -- print $ IMap.toList (ISet.toList <$> normalE)
+
+                      | otherwise ->
+                        putStr (make_dot opts g)
 
             _ -> hPutStrLn stderr $
                   usageInfo "usage: graphmod MODULES/PATHS" options
-
 
 data Input  = File FilePath | Module ModName
               deriving Show
@@ -49,10 +57,13 @@ to_input m
   | takeExtension m `elem` suffixes = File m
   | otherwise                       = Module (splitModName m)
 
+resolveNodes :: Nodes -> [Int] -> [[String]]
+resolveNodes (_,map) xs = fromMaybe (error "Missing nodeId") . flip IMap.lookup map <$> xs
 
+type Nodes'  = Trie.Trie String [((NodeT,String),Int)]
+               -- Maps a path to:   ((node, label), nodeId)
 
-type Nodes   = Trie.Trie String [((NodeT,String),Int)]
-                    -- Maps a path to:   ((node, label), nodeId)
+type Nodes   = (Nodes', IMap.IntMap [String])
 
 type Edges    = IMap.IntMap ISet.IntSet
 
@@ -83,6 +94,31 @@ noEdges = AllEdges { normalEdges    = IMap.empty
                    , sourceEdges    = IMap.empty
                    }
 
+combs :: Int -> [([Int], [Int])] -> [[([Int], [Int])]]
+combs 0 _ = [[]]
+combs _ [] = []
+combs k (x:xs) = ((x :) <$> combs (k - 1) xs) ++ combs k xs
+
+toposort :: [(Int, [Int])] -> [Int]
+toposort xs
+  | (not . null) cycleDetect =
+    error $ "Dependency cycle detected for nodes " ++ show cycleDetect
+  | otherwise = foldl makePrecede [] dB
+  where
+    dB :: [([Int], [Int])]
+    dB = ((\(x, y) -> (x, y \\ x)) . (return *** id)) <$> xs
+    makePrecede :: [Int] -> ([Int], [Int]) -> [Int]
+    makePrecede ts ([x], xs) =
+      nub $
+      case elemIndex x ts of
+        Just i -> uncurry (++) $ first (++ xs) $ splitAt i ts
+        _ -> ts ++ xs ++ [x]
+    cycleDetect :: [[Int]]
+    cycleDetect =
+      filter ((> 1) . length) $
+      (\[(a, as), (b, bs)] -> (a `intersect` bs) ++ (b `intersect` as)) <$>
+      combs 2 dB
+
 graph :: Opts -> [Input] -> IO (AllEdges, Nodes)
 graph opts inputs = fmap maybePrune $ mfix $ \ ~(_,mods) ->
   -- NOTE: 'mods' is the final value of 'done' in the funciton 'loop'.
@@ -95,8 +131,8 @@ graph opts inputs = fmap maybePrune $ mfix $ \ ~(_,mods) ->
               [Input]     {- root files/modules -} ->
               IO (AllEdges, Nodes)
 
-      loop done es _ [] =
-              return (es, collapseAll opts done (collapse_quals opts))
+      loop (done', dict) es _ [] =
+              return (es, (collapseAll opts done' (collapse_quals opts), dict))
 
       loop done es size (Module m : todo)
         | ignore done m = loop done es size todo
@@ -138,7 +174,7 @@ graph opts inputs = fmap maybePrune $ mfix $ \ ~(_,mods) ->
                 aes { normalEdges = insSet nFrom nTo (normalEdges aes) }
 
 
-  in loop Trie.empty noEdges 0 inputs
+  in loop (Trie.empty, mempty) noEdges 0 inputs
 
   where
   maybePrune (es,ns)
@@ -152,7 +188,7 @@ graph opts inputs = fmap maybePrune $ mfix $ \ ~(_,mods) ->
 
 
 lookupMod :: ModName -> Nodes -> Maybe Int
-lookupMod (q,m) t = (msum . map isThis =<< Trie.lookup q t)
+lookupMod (q,m) (t,_) = (msum . map isThis =<< Trie.lookup q t)
   where isThis ((ty,m'),nid) =
           case ty of
             CollapsedNode False -> Nothing -- Keep looking for the actual node
@@ -160,7 +196,7 @@ lookupMod (q,m) t = (msum . map isThis =<< Trie.lookup q t)
             _                   -> guard (m == m') >> return nid
 
 insMod :: ModName -> Int -> Nodes -> Nodes
-insMod (q,m) n t  = Trie.insert q ins t
+insMod (q,m) n (t,d)  = (Trie.insert q ins t,IMap.insert n (q ++ [m]) d)
   where
   ins xs = case xs of
              Nothing -> [ ((ModuleNode,m),n) ]
@@ -205,7 +241,7 @@ isIgnored (Trie.Sub ts _)                     (q:qs,m) =
 
 -- XXX: We could combine collapseAll and collapse into a single pass
 -- to avoid traversing form the root each time.
-collapseAll :: Opts -> Nodes -> Trie.Trie String Bool -> Nodes
+collapseAll :: Opts -> Nodes' -> Trie.Trie String Bool -> Nodes'
 collapseAll opts t0 =
   foldr (\q t -> fromMaybe t (collapse opts t q)) t0 . toList
   where
@@ -215,8 +251,8 @@ collapseAll opts t0 =
                                      return (q:qs, x)
 
 -- NOTE: We use the Maybe type to indicate when things changed.
-collapse :: Opts -> Nodes -> (Qualifier,Bool) -> Maybe Nodes
-collapse _ _ ([],_) = return Trie.empty      -- Probably not terribly useful.
+collapse :: Opts -> Nodes' -> (Qualifier,Bool) -> Maybe Nodes'
+collapse _ _ ([],_) = return (Trie.empty)      -- Probably not terribly useful.
 
 collapse opts (Trie.Sub ts mb) ([q],alsoMod) =
   do t   <- Map.lookup q ts
@@ -254,7 +290,7 @@ collapse opts (Trie.Sub ts ms) (q : qs,x) =
 
 -- | If inside cluster A.B we have a module M,
 -- and there is a cluster A.B.M, then move M into that cluster as a special node
-moveModulesInCluster :: Nodes -> Nodes
+moveModulesInCluster :: Nodes' -> Nodes'
 moveModulesInCluster (Trie.Sub su0 ms0) =
   goMb (fmap moveModulesInCluster su0) ms0
   where
@@ -296,15 +332,15 @@ moveModulesInCluster (Trie.Sub su0 ms0) =
 -- Render edges and a trie into the dot language
 --------------------------------------------------------------------------------
 make_dot :: Opts -> (AllEdges,Nodes) -> String
-make_dot opts (es,t) =
+make_dot opts (es,t@(t',dict)) =
   showDot $
   do attribute ("size", graph_size opts)
      attribute ("ratio", "fill")
      let cols = colors (color_scheme opts)
      if use_clusters opts
         then make_clustered_dot cols $
-               if mod_in_cluster opts then moveModulesInCluster t else t
-        else make_unclustered_dot cols "" t >> return ()
+               if mod_in_cluster opts then moveModulesInCluster t' else t'
+        else make_unclustered_dot cols "" t' >> return ()
      genEdges normalAttr (normalEdges es)
      genEdges sourceAttr (sourceEdges es)
   where
@@ -321,7 +357,7 @@ make_dot opts (es,t) =
 
 
 
-make_clustered_dot :: [Color] -> Nodes -> Dot ()
+make_clustered_dot :: [Color] -> Nodes' -> Dot ()
 make_clustered_dot cs0 su = go (0,0,0) cs0 su >> return ()
   where
   clusterC = "#0000000F"
@@ -364,7 +400,7 @@ make_clustered_dot cs0 su = go (0,0,0) cs0 su >> return ()
        goSub outer_col cs1 more
 
 
-make_unclustered_dot :: [Color] -> String -> Nodes -> Dot [Color]
+make_unclustered_dot :: [Color] -> String -> Nodes' -> Dot [Color]
 make_unclustered_dot c pre (Trie.Sub xs ys') =
   do let col = renderColor (head c)
      let ys = fromMaybe [] ys'
@@ -480,6 +516,8 @@ data Opts = Opts
   , graph_size    :: String
 
   , use_cabal     :: Bool -- ^ should we try to use a cabal file, if any
+
+  , mode_toposort :: Bool
   }
 
 type IgnoreSet  = Trie.Trie String IgnoreSpec
@@ -501,6 +539,7 @@ default_opts = Opts
   , prune_edges     = False
   , graph_size      = "6,4"
   , use_cabal       = True
+  , mode_toposort   = False
   }
 
 options :: [OptDescr OptT]
@@ -546,12 +585,18 @@ options =
 
   , Option ['v'] ["version"]   (NoArg set_show_version)
     "Show the current version."
+
+  , Option ['t'] ["toposort"] (NoArg set_mode_toposort)
+    "Print the module list in dependency-toposorted order."
   ]
 
 add_current      :: OptT
 add_current o     = case inc_dirs o of
                       [] -> o { inc_dirs = ["."] }
                       _  -> o
+
+set_mode_toposort  :: OptT
+set_mode_toposort o = o { mode_toposort = True }
 
 set_quiet        :: OptT
 set_quiet o       = o { quiet = True }
@@ -608,4 +653,3 @@ set_size s o = o { graph_size = s }
 
 set_cabal :: Bool -> OptT
 set_cabal on o = o { use_cabal = on }
-
