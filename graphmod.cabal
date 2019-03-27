@@ -6,20 +6,15 @@ author:         Iavor S. Diatchki
 maintainer:     iavor.diatchki@gmail.com
 homepage:       http://github.com/yav/graphmod/wiki
 build-type:     Simple
-cabal-version:  >= 1.6
+cabal-version:  >= 1.10
 synopsis:       Present the module dependencies of a program as a "dot" graph.
 description:    This package contains a program that computes "dot" graphs
                 from the dependencies of a number of Haskell modules.
 category:       Development
 
-tested-with:    GHC==7.0.1,  GHC==7.0.2,  GHC==7.0.3, GHC==7.0.4,
-                GHC==7.2.1,  GHC==7.2.2,
-                GHC==7.4.1,  GHC==7.4.2,
-                GHC==7.6.1,  GHC==7.6.2,  GHC==7.6.3,
-                GHC==7.8.1,  GHC==7.8.2,  GHC==7.8.3, GHC==7.8.4
-                GHC==7.10.1, GHC==7.10.2, GHC==7.10.3
-                GHC==8.0.1,  GHC==8.0.2,
-                GHC==8.2.1
+tested-with:    GHC==8.0.1,  GHC==8.0.2,
+                GHC==8.2.1,
+                GHC==8.6.3, GHC==8.6.4
 
 extra-source-files: CHANGELOG.md
 
@@ -30,6 +25,7 @@ executable graphmod
                      haskell-lexer >= 1.0.2, containers, Cabal, pretty
     hs-source-dirs:  src
     ghc-options:     -Wall -O2
+    default-language: Haskell2010
 
 source-repository head
   type:     git

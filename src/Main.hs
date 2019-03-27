@@ -216,15 +216,21 @@ collapseAll opts t0 =
 
 -- NOTE: We use the Maybe type to indicate when things changed.
 collapse :: Opts -> Nodes -> (Qualifier,Bool) -> Maybe Nodes
-collapse _ _ ([],_) = return Trie.empty      -- Probably not terribly useful.
+collapse _ _ ([],_) = Nothing
 
-collapse opts (Trie.Sub ts mb) ([q],alsoMod) =
+collapse opts (Trie.Sub ts mb) ([q],alsoMod') =
   do t   <- Map.lookup q ts
-     let will_move = mod_in_cluster opts && Map.member q ts
+     let alsoMod = alsoMod' || mod_in_cluster opts
+         -- if modules are moved in their sub-directory clsuter,
+         -- then we always want to collapse them, irrspective of the flag given
+
+
+         nestedMods = [ nm | Trie.Sub _ (Just xs) <- Map.elems ts
+                           , ((_,nm),_)           <- xs ]
+         will_move = mod_in_cluster opts && (q `elem` nestedMods)
          (thisMod,otherMods)
-            | alsoMod || will_move = case findThisMod =<< mb of
-                                       Nothing         -> (Nothing, [])
-                                       Just (nid,rest) -> (Just nid, rest)
+            | alsoMod || will_move
+            , Just (nid,rest) <- findThisMod =<< mb = (Just nid, rest)
             | otherwise = (Nothing, fromMaybe [] mb)
 
      -- use this node-id to represent the collapsed cluster
@@ -246,7 +252,7 @@ collapse opts (Trie.Sub ts mb) ([q],alsoMod) =
     msum (fmap snd (listToMaybe =<< ms) : map getFirst (Map.elems ts1))
 
 collapse opts (Trie.Sub ts ms) (q : qs,x) =
-  do t <- Map.lookup q ts
+  do t  <- Map.lookup q ts
      t1 <- collapse opts t (qs,x)
      return (Trie.Sub (Map.insert q t1 ts) ms)
 
