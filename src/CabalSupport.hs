@@ -22,11 +22,19 @@ import Distribution.PackageDescription.Parsec(readGenericPackageDescription)
 import Distribution.PackageDescription.Parse(readGenericPackageDescription)
 #endif
 import Distribution.Types.UnqualComponentName (UnqualComponentName)
+
+#if MIN_VERSION_Cabal(2,2,0)
+import Distribution.Pretty (prettyShow)
+
+pretty :: UnqualComponentName -> String
+pretty = prettyShow
+#else
 import Distribution.Text (disp)
 import Text.PrettyPrint (render)
 
 pretty :: UnqualComponentName -> String
 pretty = render . disp
+#endif
 #else
 import Distribution.PackageDescription.Parse(readPackageDescription)
 import Distribution.Verbosity (Verbosity)
