@@ -12,10 +12,11 @@ description:    This package contains a program that computes "dot" graphs
                 from the dependencies of a number of Haskell modules.
 category:       Development
 
-tested-with:    GHC==8.0.1,  GHC==8.0.2,
-                GHC==8.2.1,
-                GHC==8.6.3, GHC==8.6.4,
-                GHC==8.8.1
+tested-with:    GHC==8.0.2,
+                GHC==8.2.2,
+                GHC==8.6.5,
+                GHC==8.8.3,
+                GHC==8.10.1
 
 extra-source-files: CHANGELOG.md
 
