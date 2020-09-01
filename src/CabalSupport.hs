@@ -2,7 +2,7 @@
 
 module CabalSupport (parseCabalFile,Unit(..),UnitName(..)) where
 
-import Utils(ModName)
+import Utils(ModName,fromHierarchy)
 
 import Data.Maybe(maybeToList)
 import System.FilePath((</>))
@@ -83,7 +83,7 @@ exeUnit exe = Unit { unitName    = UnitExecutable (pretty $ exeName exe)
 toMod :: ModuleName -> ModName
 toMod m = case components m of
             [] -> error "Empty module name."
-            xs -> (init xs, last xs)
+            xs -> (fromHierarchy (init xs), last xs)
 
 findUnits :: GenericPackageDescription -> [Unit]
 findUnits g = maybeToList (fmap libUnit (library pkg))  ++

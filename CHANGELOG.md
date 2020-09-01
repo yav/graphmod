@@ -1,3 +1,16 @@
+* 1.4.5
+  Several Main modules in one package are disambiguated 
+  as follows (see https://github.com/yav/graphmod/issues/28).
+  When the module name is Main and there are no qualifiers 
+  (Cabal does not allow any)
+  Then the qualifiers are the directories leading up to the 
+  source file and the module name is replaced by the file's 
+  basename. 
+  E.g. when the Main module resides in 
+  app/Program/Main.hs
+  then the node in the graph is labelled 
+  app.Program.Main
+
 * Version 1.4.1
   - Support for Cabal 2
   - Updates to build infrastructure

@@ -2,6 +2,8 @@ module Utils
   ( parseFile
   , parseString
   , Qualifier
+  , qualifierNodes
+  , fromHierarchy
   , Import(..)
   , ImpType(..)
   , splitQualifier
@@ -35,7 +37,10 @@ parseFile f =
      _ <- evaluate (length imps) -- this is here so that the file gets closed
      if ext == ".imports"
        then return (splitModName (takeBaseName f), imps)
-       else return (modName, imps)
+       else case modName of
+            -- disambiguate Main modules with no qualifiers
+            (Hierarchy [],"Main") -> return (splitFilePath f,imps)
+            _ -> return (modName, imps)
 
 
   where get_text txt = if ext == ".lhs" then delit txt else txt
@@ -113,7 +118,9 @@ isImp ts = attempt (1::Int) (drop 1 ts)
 parse              :: [PosToken] -> (ModName,[Import])
 parse ((Reservedid,(_,"module")) : (_,(_,m)) : is) =
                                                   (splitModName m,imports is)
-parse is            = (([],"Main"),imports is)
+parse is            = ((Hierarchy [],"Main"),imports is)
+-- TODO: special handling for Main modules, 
+-- to disambiguate multiple main Modules in a single project
 
 imports            :: [PosToken] -> [Import]
 imports ts          = case isImp $ snd $ break (("import" ==) . snd . snd) ts of
@@ -121,30 +128,50 @@ imports ts          = case isImp $ snd $ break (("import" ==) . snd . snd) ts of
                         _           -> []
 
 -- | A hierarchical module name.
-type Qualifier      = [String]
-type ModName        = (Qualifier,String)
+-- We make this an opaque type with accessors 'qualifierNodes' and 'fromHierarchy' 
+-- so that we can transparently add new structure to this type.
+data Qualifier = Hierarchy [String]
+    | FromFile [String] deriving (Show)
+qualifierNodes :: Qualifier -> [String]
+qualifierNodes (Hierarchy qs) = qs
+qualifierNodes (FromFile qs) = qs 
+fromHierarchy :: [String] -> Qualifier
+fromHierarchy = Hierarchy
 
+type ModName        = (Qualifier,String)
 
 -- | Convert a string name into a hierarchical name qualifier.
 splitQualifier     :: String -> Qualifier
-splitQualifier cs   = case break ('.'==) cs of
-                        (xs,_:ys)  -> xs : splitQualifier ys
-                        _          -> [cs]
+splitQualifier cs = case break ('.'==) cs of
+                        (xs,_:ys)  -> let Hierarchy qs = splitQualifier ys 
+                            in Hierarchy (xs:qs)
+                        _          -> Hierarchy [cs]
+
+-- | The 'Qualifier' for a Main module is the path leading to it, 
+-- the module name is the file's basename, which is Main in typical cases.  
+splitFilePath :: FilePath -> ModName
+splitFilePath path = let (d,f) = splitFileName path 
+    in (FromFile . splitDirectories . takeDirectory $ d, dropExtensions f)
 
 -- | Convert a string name into a hierarchical name.
+-- It is important that 
+-- 
+-- @
+-- f `elem` (('relPaths' . 'splitFilePath') f)
+-- @
 splitModName       :: String -> ModName
 splitModName cs     = case break ('.'==) cs of
-                        (xs,_:ys)  -> let (as,bs) = splitModName ys
-                                   in (xs:as,bs)
-                        _ -> ([],cs)
+                        (xs,_:ys)  -> let (Hierarchy as,bs) = splitModName ys
+                                   in (Hierarchy (xs:as),bs)
+                        _ -> (Hierarchy [],cs)
 
 joinModName        :: ModName -> String
-joinModName (xs,y)  = concat $ intersperse "." (xs ++ [y])
+joinModName (q,y)  = concat $ intersperse "." (qualifierNodes q ++ [y])
 
 -- | The files in which a module might reside.
 relPaths           :: ModName -> [FilePath]
-relPaths (xs,y)     = [ prefix ++ suffix | suffix <- suffixes ]
-  where prefix      = foldr (</>) y xs
+relPaths (q,y)     = [ prefix ++ suffix | suffix <- suffixes ]
+  where prefix      = foldr (</>) y (qualifierNodes q)
 
 suffixes           :: [String]
 suffixes            = [".hs",".lhs", ".imports"]

@@ -152,7 +152,7 @@ graph opts inputs = fmap maybePrune $ mfix $ \ ~(_,mods) ->
 
 
 lookupMod :: ModName -> Nodes -> Maybe Int
-lookupMod (q,m) t = (msum . map isThis =<< Trie.lookup q t)
+lookupMod (q,m) t = (msum . map isThis =<< Trie.lookup (qualifierNodes q) t)
   where isThis ((ty,m'),nid) =
           case ty of
             CollapsedNode False -> Nothing -- Keep looking for the actual node
@@ -160,7 +160,7 @@ lookupMod (q,m) t = (msum . map isThis =<< Trie.lookup q t)
             _                   -> guard (m == m') >> return nid
 
 insMod :: ModName -> Int -> Nodes -> Nodes
-insMod (q,m) n t  = Trie.insert q ins t
+insMod (q,m) n t  = Trie.insert (qualifierNodes q) ins t
   where
   ins xs = case xs of
              Nothing -> [ ((ModuleNode,m),n) ]
@@ -194,13 +194,18 @@ pruneEdges es = foldr checkEdges es (IMap.toList es)
 
 
 isIgnored :: IgnoreSet -> ModName -> Bool
-isIgnored (Trie.Sub _ (Just IgnoreAll))       _        = True
-isIgnored (Trie.Sub _ (Just (IgnoreSome ms))) ([],m)   = elem m ms
-isIgnored (Trie.Sub _ Nothing)                ([],_)   = False
-isIgnored (Trie.Sub ts _)                     (q:qs,m) =
-  case Map.lookup q ts of
-    Nothing -> False
-    Just t  -> isIgnored t (qs,m)
+isIgnored (Trie.Sub _ (Just IgnoreAll))     _ = True
+isIgnored (Trie.Sub ts i              ) (q,m) =
+  case qualifierNodes q of
+    [] ->
+      case i of
+        Just (IgnoreSome ms) -> elem m ms
+        Just IgnoreAll       -> error "BUG: IgnoreAll should be matched"
+        Nothing -> False
+    x : xs ->
+      case Map.lookup x ts of
+        Nothing -> False
+        Just t -> isIgnored t (fromHierarchy xs,m) 
 
 
 -- XXX: We could combine collapseAll and collapse into a single pass
@@ -215,7 +220,7 @@ collapseAll opts t0 =
                                      return (q:qs, x)
 
 -- NOTE: We use the Maybe type to indicate when things changed.
-collapse :: Opts -> Nodes -> (Qualifier,Bool) -> Maybe Nodes
+collapse :: Opts -> Nodes -> ([String],Bool) -> Maybe Nodes
 collapse _ _ ([],_) = Nothing
 
 collapse opts (Trie.Sub ts mb) ([q],alsoMod') =
@@ -580,14 +585,14 @@ add_inc d o       = o { inc_dirs = d : inc_dirs o }
 add_ignore_mod   :: String -> OptT
 add_ignore_mod s o = o { ignore_mods = ins (splitModName s) }
   where
-  ins (q,m) = Trie.insert q (upd m) (ignore_mods o)
+  ins (q,m) = Trie.insert (qualifierNodes q) (upd m) (ignore_mods o)
 
   upd _ (Just IgnoreAll)        = IgnoreAll
   upd m (Just (IgnoreSome ms))  = IgnoreSome (m:ms)
   upd m Nothing                 = IgnoreSome [m]
 
 add_ignore_qual :: String -> OptT
-add_ignore_qual s o = o { ignore_mods = Trie.insert (splitQualifier s)
+add_ignore_qual s o = o { ignore_mods = Trie.insert ((qualifierNodes.splitQualifier) s)
                                           (const IgnoreAll) (ignore_mods o) }
 
 add_color_scheme :: String -> OptT
@@ -596,7 +601,7 @@ add_color_scheme n o = o { color_scheme = case reads n of
                                             _ -> color_scheme default_opts }
 
 add_collapse_qual :: Bool -> String -> OptT
-add_collapse_qual m s o = o { collapse_quals = upd (splitQualifier s)
+add_collapse_qual m s o = o { collapse_quals = upd ((qualifierNodes.splitQualifier) s)
                                                       (collapse_quals o) }
 
   where
