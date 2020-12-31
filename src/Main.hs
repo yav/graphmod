@@ -14,7 +14,7 @@ import qualified Data.Map    as Map
 import qualified Data.IntSet as ISet
 import System.Environment(getArgs)
 import System.IO(hPutStrLn,stderr)
-import System.FilePath (isExtensionOf,takeExtension)
+import System.FilePath (takeExtension)
 import System.Console.GetOpt
 import System.Directory(getDirectoryContents)
 import Numeric(showHex)
@@ -452,7 +452,7 @@ ambigMsg m xs       = "Multiple files for module " ++ joinModName m
 fromCabal :: Bool -> IO ([FilePath],[Input])
 fromCabal True =
   do fs <- getDirectoryContents "." -- XXX
-     case filter (isExtensionOf ".cabal") fs of
+     case filter ((".cabal" ==) . takeExtension) fs of
        f : _ -> do units <- parseCabalFile f
                               `X.catch` \SomeException {} -> return []
                    return (fromUnits units)
