@@ -17,10 +17,9 @@ module Utils
 
 import Language.Haskell.Lexer(lexerPass0,Token(..),PosToken,line)
 
-import Control.Monad(mplus)
+import Control.Monad(mplus, filterM)
 import Control.Exception(evaluate)
-import Data.Maybe(catMaybes)
-import Data.List(intersperse,isPrefixOf,nub)
+import Data.List(intercalate,isPrefixOf,nub)
 import System.Directory(doesFileExist)
 import System.FilePath
 
@@ -123,7 +122,7 @@ parse is            = ((Hierarchy [],"Main"),imports is)
 -- to disambiguate multiple main Modules in a single project
 
 imports            :: [PosToken] -> [Import]
-imports ts          = case isImp $ snd $ break (("import" ==) . snd . snd) ts of
+imports ts          = case isImp $ dropWhile (not . (("import" ==) . snd . snd)) ts of
                         Just (x,xs) -> x : imports xs
                         _           -> []
 
@@ -134,7 +133,7 @@ data Qualifier = Hierarchy [String]
     | FromFile [String] deriving (Show)
 qualifierNodes :: Qualifier -> [String]
 qualifierNodes (Hierarchy qs) = qs
-qualifierNodes (FromFile qs) = qs 
+qualifierNodes (FromFile qs) = qs
 fromHierarchy :: [String] -> Qualifier
 fromHierarchy = Hierarchy
 
@@ -143,14 +142,14 @@ type ModName        = (Qualifier,String)
 -- | Convert a string name into a hierarchical name qualifier.
 splitQualifier     :: String -> Qualifier
 splitQualifier cs = case break ('.'==) cs of
-                        (xs,_:ys)  -> let Hierarchy qs = splitQualifier ys 
+                        (xs,_:ys)  -> let Hierarchy qs = splitQualifier ys
                             in Hierarchy (xs:qs)
                         _          -> Hierarchy [cs]
 
 -- | The 'Qualifier' for a Main module is the path leading to it, 
 -- the module name is the file's basename, which is Main in typical cases.  
 splitFilePath :: FilePath -> ModName
-splitFilePath path = let (d,f) = splitFileName path 
+splitFilePath path = let (d,f) = splitFileName path
     in (FromFile . splitDirectories . takeDirectory $ d, dropExtensions f)
 
 -- | Convert a string name into a hierarchical name.
@@ -166,7 +165,7 @@ splitModName cs     = case break ('.'==) cs of
                         _ -> (Hierarchy [],cs)
 
 joinModName        :: ModName -> String
-joinModName (q,y)  = concat $ intersperse "." (qualifierNodes q ++ [y])
+joinModName (q,y)  = intercalate "." (qualifierNodes q ++ [y])
 
 -- | The files in which a module might reside.
 relPaths           :: ModName -> [FilePath]
@@ -179,11 +178,9 @@ suffixes            = [".hs",".lhs", ".imports"]
 -- | The files in which a module might reside.
 -- We report only files that exist.
 modToFile          :: [FilePath] -> ModName -> IO [FilePath]
-modToFile dirs m    = (nub . catMaybes) `fmap` mapM check paths
+modToFile dirs m    = nub `fmap` filterM doesFileExist paths
   where
   paths             = [ d </> r | d <- dirs, r <- relPaths m ]
-  check p           = do x <- doesFileExist p
-                         return (if x then Just p else Nothing)
 
 
 delit :: String -> String
