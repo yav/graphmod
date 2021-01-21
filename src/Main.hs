@@ -3,18 +3,18 @@ import qualified Trie
 import CabalSupport(parseCabalFile,Unit(..))
 import Text.Dot
 
-import Control.Monad(when,forM_,msum,guard,unless)
+import Control.Monad(forM_,msum,guard,unless)
 import Control.Monad.Fix(mfix)
 import           Control.Exception (SomeException(..))
 import qualified Control.Exception as X (catch)
-import Data.List(intersperse,transpose)
+import Data.List(intercalate,transpose)
 import Data.Maybe(isJust,fromMaybe,listToMaybe)
 import qualified Data.IntMap as IMap
 import qualified Data.Map    as Map
 import qualified Data.IntSet as ISet
 import System.Environment(getArgs)
 import System.IO(hPutStrLn,stderr)
-import System.FilePath
+import System.FilePath (takeExtension)
 import System.Console.GetOpt
 import System.Directory(getDirectoryContents)
 import Numeric(showHex)
@@ -107,7 +107,7 @@ graph opts inputs = fmap maybePrune $ mfix $ \ ~(_,mods) ->
                             if with_missing opts
                               then add done es size m [] todo
                               else loop done es size todo
-               f : gs -> do when (not (null gs)) (warn opts (ambigMsg m fs))
+               f : gs -> do unless (null gs) (warn opts (ambigMsg m fs))
                             (x,imps) <- parseFile f
                             add done es size x imps todo
 
@@ -152,7 +152,7 @@ graph opts inputs = fmap maybePrune $ mfix $ \ ~(_,mods) ->
 
 
 lookupMod :: ModName -> Nodes -> Maybe Int
-lookupMod (q,m) t = (msum . map isThis =<< Trie.lookup (qualifierNodes q) t)
+lookupMod (q,m) t = msum . map isThis =<< Trie.lookup (qualifierNodes q) t
   where isThis ((ty,m'),nid) =
           case ty of
             CollapsedNode False -> Nothing -- Keep looking for the actual node
@@ -162,9 +162,7 @@ lookupMod (q,m) t = (msum . map isThis =<< Trie.lookup (qualifierNodes q) t)
 insMod :: ModName -> Int -> Nodes -> Nodes
 insMod (q,m) n t  = Trie.insert (qualifierNodes q) ins t
   where
-  ins xs = case xs of
-             Nothing -> [ ((ModuleNode,m),n) ]
-             Just ys -> ((ModuleNode,m),n) : ys
+  ins xs = ((ModuleNode,m),n) : fromMaybe [] xs
 
 insSet :: Int -> Int -> Edges -> Edges
 insSet x y m = IMap.insertWith ISet.union x (ISet.singleton y) m
@@ -205,7 +203,7 @@ isIgnored (Trie.Sub ts i              ) (q,m) =
     x : xs ->
       case Map.lookup x ts of
         Nothing -> False
-        Just t -> isIgnored t (fromHierarchy xs,m) 
+        Just t -> isIgnored t (fromHierarchy xs,m)
 
 
 -- XXX: We could combine collapseAll and collapse into a single pass
@@ -290,7 +288,7 @@ moveModulesInCluster (Trie.Sub su0 ms0) =
           Just t  -> Right (Map.insert s (Trie.insert [] add t) mps)
             where
             newM   = ((ModuleInItsCluster,s),i)
-            add xs = [newM] ++ fromMaybe [] xs
+            add xs = newM : fromMaybe [] xs
 
 
       ModuleInItsCluster    -> Left it
@@ -344,7 +342,7 @@ make_clustered_dot cs0 su = go (0,0,0) cs0 su >> return ()
        forM_ (fromMaybe [] ys) $ \((t,ls),n) ->
          unless (t == Redirect || t == Deleted) $
          userNode (userNodeId n) $
-         [ ("label",ls) ] ++
+         ("label",ls) :
          case t of
            CollapsedNode False ->   [ ("shape", "box")
                                     , ("style","filled")
@@ -406,7 +404,7 @@ make_unclustered_dot c pre (Trie.Sub xs ys') =
 type Color = (Int,Int,Int)
 
 colors :: Int -> [Color]
-colors n = cycle $ mix_colors $ drop n $ palettes
+colors n = cycle $ mix_colors $ drop n palettes
 
 renderColor :: Color -> String
 renderColor (x,y,z) = '#' : showHex (mk x) (showHex (mk y) (showHex (mk z) ""))
@@ -445,7 +443,7 @@ notFoundMsg m       = "Cannot find a file for module "
 ambigMsg           :: ModName -> [FilePath] -> String
 ambigMsg m xs       = "Multiple files for module " ++ joinModName m
                    ++ " (picking the first):\n"
-                   ++ concat (intersperse "," xs)
+                   ++ intercalate "," xs
 
 
 --------------------------------------------------------------------------------
