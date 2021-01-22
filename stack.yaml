@@ -1,4 +1,9 @@
 resolver: lts-16.27
 
 packages:
-- '.'
+  - "."
+
+nix:
+  enable: false
+  path: [nixpkgs=./nix/nixpkgs.nix]
+  shell-file: ./nix/stack.nix
