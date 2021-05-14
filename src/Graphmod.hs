@@ -1,3 +1,5 @@
+module Graphmod (graphmod) where
+
 import Utils
 import qualified Trie
 import CabalSupport(parseCabalFile,Unit(..))
@@ -12,7 +14,6 @@ import Data.Maybe(isJust,fromMaybe,listToMaybe)
 import qualified Data.IntMap as IMap
 import qualified Data.Map    as Map
 import qualified Data.IntSet as ISet
-import System.Environment(getArgs)
 import System.IO(hPutStrLn,stderr)
 import System.FilePath (takeExtension)
 import System.Console.GetOpt
@@ -22,23 +23,22 @@ import Numeric(showHex)
 import Paths_graphmod (version)
 import Data.Version (showVersion)
 
-main :: IO ()
-main = do xs <- getArgs
-          let (fs, ms, errs) = getOpt Permute options xs
-          case errs of
-            [] | show_version opts ->
-                  putStrLn ("graphmod " ++ showVersion version)
+graphmod :: [String] -> IO ()
+graphmod xs = do
+  let (fs, ms, errs) = getOpt Permute options xs
+  case errs of
+    [] | show_version opts ->
+          putStrLn ("graphmod " ++ showVersion version)
 
-               | otherwise ->
-                  do (incs,inps) <- fromCabal (use_cabal opts)
-                     g <- graph (foldr add_inc (add_current opts) incs)
-                                (inps ++ map to_input ms)
-                     putStr (make_dot opts g)
-              where opts = foldr ($) default_opts fs
+       | otherwise ->
+          do (incs,inps) <- fromCabal (use_cabal opts)
+             g <- graph (foldr add_inc (add_current opts) incs)
+                        (inps ++ map to_input ms)
+             putStr (make_dot opts g)
+      where opts = foldr ($) default_opts fs
 
-            _ -> hPutStrLn stderr $
-                  usageInfo "usage: graphmod MODULES/PATHS" options
-
+    _ -> hPutStrLn stderr $
+          usageInfo "usage: graphmod MODULES/PATHS" options
 
 data Input  = File FilePath | Module ModName
               deriving Show
@@ -617,4 +617,3 @@ set_size s o = o { graph_size = s }
 
 set_cabal :: Bool -> OptT
 set_cabal on o = o { use_cabal = on }
-
