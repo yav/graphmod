@@ -1,3 +1,6 @@
+* 1.4.5.1
+  - Support for Cabal 3.6
+
 * 1.4.5
   Several Main modules in one package are disambiguated 
   as follows (see https://github.com/yav/graphmod/issues/28).
