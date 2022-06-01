@@ -21,6 +21,7 @@ import Control.Monad(mplus, filterM)
 import Control.Exception(evaluate)
 import Data.List(intercalate,isPrefixOf,nub)
 import System.Directory(doesFileExist)
+import qualified System.IO as IO
 import System.FilePath
 
 data Import = Import { impMod :: ModName, impType :: ImpType }
@@ -32,8 +33,11 @@ data ImpType = NormalImp | SourceImp
 -- | Get the imports of a file.
 parseFile          :: FilePath -> IO (ModName,[Import])
 parseFile f =
-  do (modName, imps) <- (parseString . get_text) `fmap` readFile f
+  do h <- IO.openFile f IO.ReadMode
+     IO.hSetEncoding h IO.utf8
+     (modName, imps) <- (parseString . get_text) `fmap` IO.hGetContents h
      _ <- evaluate (length imps) -- this is here so that the file gets closed
+     IO.hClose h
      if ext == ".imports"
        then return (splitModName (takeBaseName f), imps)
        else case modName of
