@@ -30,8 +30,8 @@ executable graphmod
   default-language: Haskell2010
 
 library
-    exposed-modules: Graphmod
-    other-modules:   Utils, Trie, Paths_graphmod, CabalSupport
+    exposed-modules: Graphmod, Utils
+    other-modules:   Trie, Paths_graphmod, CabalSupport
     build-depends:   base < 5, directory, filepath, dotgen >= 0.2 && < 0.5,
                      haskell-lexer >= 1.0.2, containers, Cabal, pretty
     hs-source-dirs:  src
