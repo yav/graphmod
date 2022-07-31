@@ -1,4 +1,4 @@
-module Utils
+module Graphmod.Utils
   ( parseFile
   , parseString
   , Qualifier

@@ -2,7 +2,7 @@
 
 module CabalSupport (parseCabalFile,Unit(..),UnitName(..)) where
 
-import Utils(ModName,fromHierarchy)
+import Graphmod.Utils(ModName,fromHierarchy)
 
 import Data.Maybe(maybeToList)
 import System.FilePath((</>))
