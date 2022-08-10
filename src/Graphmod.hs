@@ -1,8 +1,8 @@
 module Graphmod (graphmod) where
 
 import Graphmod.Utils
-import qualified Trie
-import CabalSupport(parseCabalFile,Unit(..))
+import qualified Graphmod.Trie as Trie
+import Graphmod.CabalSupport(parseCabalFile,Unit(..))
 import Text.Dot
 
 import Control.Monad(forM_,msum,guard,unless)

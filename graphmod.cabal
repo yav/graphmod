@@ -31,7 +31,7 @@ executable graphmod
 
 library
     exposed-modules: Graphmod, Graphmod.Utils
-    other-modules:   Trie, Paths_graphmod, CabalSupport
+    other-modules:   Graphmod.Trie, Graphmod.CabalSupport, Paths_graphmod
     build-depends:   base < 5, directory, filepath, dotgen >= 0.2 && < 0.5,
                      haskell-lexer >= 1.0.2, containers, Cabal, pretty
     hs-source-dirs:  src

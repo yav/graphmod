@@ -1,6 +1,6 @@
 {-# language CPP #-}
 
-module CabalSupport (parseCabalFile,Unit(..),UnitName(..)) where
+module Graphmod.CabalSupport (parseCabalFile,Unit(..),UnitName(..)) where
 
 import Graphmod.Utils(ModName,fromHierarchy)
 

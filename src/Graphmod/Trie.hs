@@ -1,4 +1,4 @@
-module Trie where
+module Graphmod.Trie where
 
 import qualified Data.Map as Map
 import Data.Maybe(fromMaybe)
@@ -11,7 +11,7 @@ empty = Sub Map.empty Nothing
 
 lookup :: Ord a => [a] -> Trie a b -> Maybe b
 lookup [] (Sub _ b)       = b
-lookup (k:ks) (Sub as _)  = Trie.lookup ks =<< Map.lookup k as
+lookup (k:ks) (Sub as _)  = Graphmod.Trie.lookup ks =<< Map.lookup k as
 
 insert :: (Ord a) => [a] -> (Maybe b -> b) -> Trie a b -> Trie a b
 insert [] f (Sub as b)     = Sub as (Just (f b))
