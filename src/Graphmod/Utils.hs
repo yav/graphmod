@@ -1,4 +1,4 @@
-module Utils
+module Graphmod.Utils
   ( parseFile
   , parseString
   , Qualifier
@@ -25,7 +25,7 @@ import qualified System.IO as IO
 import System.FilePath
 
 data Import = Import { impMod :: ModName, impType :: ImpType }
-                deriving Show
+                deriving (Show, Eq)
 
 data ImpType = NormalImp | SourceImp
                 deriving (Show,Eq,Ord)
@@ -134,7 +134,7 @@ imports ts          = case isImp $ dropWhile (not . (("import" ==) . snd . snd))
 -- We make this an opaque type with accessors 'qualifierNodes' and 'fromHierarchy' 
 -- so that we can transparently add new structure to this type.
 data Qualifier = Hierarchy [String]
-    | FromFile [String] deriving (Show)
+    | FromFile [String] deriving (Show, Eq)
 qualifierNodes :: Qualifier -> [String]
 qualifierNodes (Hierarchy qs) = qs
 qualifierNodes (FromFile qs) = qs

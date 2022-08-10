@@ -1,6 +1,6 @@
 module Graphmod (graphmod) where
 
-import Utils
+import Graphmod.Utils
 import qualified Trie
 import CabalSupport(parseCabalFile,Unit(..))
 import Text.Dot
