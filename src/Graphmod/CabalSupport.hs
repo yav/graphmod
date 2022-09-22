@@ -15,6 +15,10 @@ import Distribution.PackageDescription
 import Distribution.PackageDescription.Configuration (flattenPackageDescription)
 import Distribution.ModuleName(ModuleName,components)
 
+#if MIN_VERSION_Cabal(3,6,0)
+import Distribution.Utils.Path (SymbolicPath, PackageDir, SourceDir, getSymbolicPath)
+#endif
+
 #if MIN_VERSION_Cabal(2,0,0)
 #if MIN_VERSION_Cabal(2,2,0)
 import Distribution.PackageDescription.Parsec(readGenericPackageDescription)
@@ -50,8 +54,6 @@ pretty = id
 -- the backwards-compatible version to be available for all Cabal
 -- versions prior to 3.6
 #if MIN_VERSION_Cabal(3,6,0)
-import Distribution.Utils.Path (SymbolicPath, PackageDir, SourceDir, getSymbolicPath)
-
 sourceDirToFilePath :: SymbolicPath PackageDir SourceDir -> FilePath
 sourceDirToFilePath = getSymbolicPath
 #else
