@@ -15,6 +15,10 @@ import Distribution.PackageDescription
 import Distribution.PackageDescription.Configuration (flattenPackageDescription)
 import Distribution.ModuleName(ModuleName,components)
 
+#if MIN_VERSION_Cabal(3,6,0)
+import Distribution.Utils.Path (SymbolicPath, PackageDir, SourceDir, getSymbolicPath)
+#endif
+
 #if MIN_VERSION_Cabal(2,0,0)
 #if MIN_VERSION_Cabal(2,2,0)
 import Distribution.PackageDescription.Parsec(readGenericPackageDescription)
@@ -46,6 +50,16 @@ pretty :: String -> String
 pretty = id
 #endif
 
+-- Note that this isn't nested under the above #if because we need
+-- the backwards-compatible version to be available for all Cabal
+-- versions prior to 3.6
+#if MIN_VERSION_Cabal(3,6,0)
+sourceDirToFilePath :: SymbolicPath PackageDir SourceDir -> FilePath
+sourceDirToFilePath = getSymbolicPath
+#else
+sourceDirToFilePath :: FilePath -> FilePath
+sourceDirToFilePath = id
+#endif
 
 parseCabalFile :: FilePath -> IO [Unit]
 parseCabalFile f = fmap findUnits (readGenericPackageDescription silent f)
@@ -65,7 +79,7 @@ data UnitName = UnitLibrary | UnitExecutable String
 
 libUnit :: Library -> Unit
 libUnit lib = Unit { unitName     = UnitLibrary
-                   , unitPaths    = hsSourceDirs (libBuildInfo lib)
+                   , unitPaths    = sourceDirToFilePath <$> hsSourceDirs (libBuildInfo lib)
                    , unitModules  = map toMod (exposedModules lib)
                                                       -- other modules?
                    , unitFiles    = []
@@ -73,11 +87,11 @@ libUnit lib = Unit { unitName     = UnitLibrary
 
 exeUnit :: Executable -> Unit
 exeUnit exe = Unit { unitName    = UnitExecutable (pretty $ exeName exe)
-                   , unitPaths   = hsSourceDirs (buildInfo exe)
+                   , unitPaths   = sourceDirToFilePath <$> hsSourceDirs (buildInfo exe)
                    , unitModules = [] -- other modules?
                    , unitFiles   = case hsSourceDirs (buildInfo exe) of
                                      [] -> [ modulePath exe ]
-                                     ds -> [ d </> modulePath exe | d <- ds ]
+                                     ds -> [ sourceDirToFilePath d </> modulePath exe | d <- ds ]
                    }
 
 toMod :: ModuleName -> ModName
