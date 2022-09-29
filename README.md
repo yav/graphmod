@@ -1,5 +1,3 @@
-[![Build Status](https://travis-ci.org/yav/graphmod.svg?branch=master)](https://travis-ci.org/yav/graphmod)
-
 # graphmod
 
 Generate a graph of the module dependencies in the "dot" format, suitable as input to the graphviz tools.
