@@ -545,7 +545,7 @@ options =
     "Remove imports if the module is imported by another imported module"
 
   , Option ['d'] ["graph-dim"] (ReqArg set_size "SIZE,SIZE")
-    "Set dimensions of the graph.  See the `size` attribute of graphvize."
+    "Set dimensions of the graph.  See the `size` attribute of graphviz."
 
   , Option ['s'] ["colors"] (ReqArg add_color_scheme "NUM")
     "Choose a color scheme number (0-5)"
