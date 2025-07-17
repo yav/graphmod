@@ -133,9 +133,9 @@ graph opts inputs = fmap maybePrune $ mfix $ \ ~(_,mods) ->
           Just nTo ->
             case impType i of
               SourceImp ->
-                aes { sourceEdges = insSet nFrom nTo (sourceEdges aes) }
+                aes { sourceEdges = insSet opts nFrom nTo (sourceEdges aes) }
               NormalImp ->
-                aes { normalEdges = insSet nFrom nTo (normalEdges aes) }
+                aes { normalEdges = insSet opts nFrom nTo (normalEdges aes) }
 
 
   in loop Trie.empty noEdges 0 inputs
@@ -164,8 +164,10 @@ insMod (q,m) n t  = Trie.insert (qualifierNodes q) ins t
   where
   ins xs = ((ModuleNode,m),n) : fromMaybe [] xs
 
-insSet :: Int -> Int -> Edges -> Edges
-insSet x y m = IMap.insertWith ISet.union x (ISet.singleton y) m
+insSet :: Opts -> Int -> Int -> Edges -> Edges
+insSet opts x y m
+  | self_import opts || x /= y = IMap.insertWith ISet.union x (ISet.singleton y) m
+  | otherwise = m
 
 
 
@@ -489,6 +491,7 @@ data Opts = Opts
   , graph_size    :: String
 
   , use_cabal     :: Bool -- ^ should we try to use a cabal file, if any
+  , self_import :: Bool
   }
 
 type IgnoreSet  = Trie.Trie String IgnoreSpec
@@ -510,6 +513,7 @@ default_opts = Opts
   , prune_edges     = False
   , graph_size      = "6,4"
   , use_cabal       = True
+  , self_import     = True
   }
 
 options :: [OptDescr OptT]
@@ -555,6 +559,9 @@ options =
 
   , Option ['v'] ["version"]   (NoArg set_show_version)
     "Show the current version."
+
+  , Option [] ["ignore-self-import"] (NoArg set_ignore_self_import)
+     "Ignore self imports"
   ]
 
 add_current      :: OptT
@@ -576,6 +583,9 @@ set_no_cluster o  = o { use_clusters = False }
 
 set_no_mod_in_cluster :: OptT
 set_no_mod_in_cluster o = o { mod_in_cluster = False }
+
+set_ignore_self_import :: OptT
+set_ignore_self_import o = o { self_import = False }
 
 add_inc          :: FilePath -> OptT
 add_inc d o       = o { inc_dirs = d : inc_dirs o }
