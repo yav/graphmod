@@ -132,9 +132,9 @@ graph opts inputs = fmap maybePrune $ mfix $ \ ~(_,mods) ->
           Nothing  -> aes
           Just nTo ->
             case impType i of
-              SourceImp ->
+              SourceImp | seperate_boot opts ->
                 aes { sourceEdges = insSet nFrom nTo (sourceEdges aes) }
-              NormalImp ->
+              _ ->
                 aes { normalEdges = insSet nFrom nTo (normalEdges aes) }
 
 
@@ -489,6 +489,7 @@ data Opts = Opts
   , graph_size    :: String
 
   , use_cabal     :: Bool -- ^ should we try to use a cabal file, if any
+  , seperate_boot :: Bool
   }
 
 type IgnoreSet  = Trie.Trie String IgnoreSpec
@@ -510,6 +511,7 @@ default_opts = Opts
   , prune_edges     = False
   , graph_size      = "6,4"
   , use_cabal       = True
+  , seperate_boot   = True
   }
 
 options :: [OptDescr OptT]
@@ -555,6 +557,9 @@ options =
 
   , Option ['v'] ["version"]   (NoArg set_show_version)
     "Show the current version."
+
+  , Option [] ["merge-boot"] (NoArg set_seperate_boot)
+    "Treat hs-boot imports like normal imports."
   ]
 
 add_current      :: OptT
@@ -567,6 +572,9 @@ set_quiet o       = o { quiet = True }
 
 set_show_version :: OptT
 set_show_version o = o { show_version = True }
+
+set_seperate_boot :: OptT
+set_seperate_boot o = o { seperate_boot = False }
 
 set_all          :: OptT
 set_all o         = o { with_missing = True }
