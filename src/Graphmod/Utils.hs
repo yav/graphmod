@@ -31,8 +31,8 @@ data ImpType = NormalImp | SourceImp
                 deriving (Show,Eq,Ord)
 
 -- | Get the imports of a file.
-parseFile          :: FilePath -> IO (ModName,[Import])
-parseFile f =
+parseFile          :: Bool -> FilePath -> IO (ModName,[Import])
+parseFile multi_main f =
   do h <- IO.openFile f IO.ReadMode
      IO.hSetEncoding h IO.utf8
      (modName, imps) <- (parseString . get_text) `fmap` IO.hGetContents h
@@ -42,7 +42,7 @@ parseFile f =
        then return (splitModName (takeBaseName f), imps)
        else case modName of
             -- disambiguate Main modules with no qualifiers
-            (Hierarchy [],"Main") -> return (splitFilePath f,imps)
+            (Hierarchy [],"Main") | multi_main -> return (splitFilePath f,imps)
             _ -> return (modName, imps)
 
 
