@@ -28,7 +28,7 @@
     name as a cluster will be rendered inside the cluster.  One can tell
     that the module is different because it will still have the color of
     modules from the cluster "above".  Also, the module has a border to
-    empahsize the difference.
+    emphasize the difference.
     This behavior may be disabled using `--no-module-in-cluster`
 
 * Version 1.2.9
@@ -36,7 +36,7 @@
   - Render `{-# SOURCE #-}` imports specially.
 
 * Version 1.2.7
-  Correct the prunning logic.
+  Correct the pruning logic.
 
 * Version 1.2.6
 
@@ -45,7 +45,7 @@
 
 * Version 1.2.5
 
-  Add support for pruning the dependecy graph.
+  Add support for pruning the dependency graph.
 
 * Version 1.2.3
 

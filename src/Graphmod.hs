@@ -85,7 +85,7 @@ noEdges = AllEdges { normalEdges    = IMap.empty
 
 graph :: Opts -> [Input] -> IO (AllEdges, Nodes)
 graph opts inputs = fmap maybePrune $ mfix $ \ ~(_,mods) ->
-  -- NOTE: 'mods' is the final value of 'done' in the funciton 'loop'.
+  -- NOTE: 'mods' is the final value of 'done' in the function 'loop'.
 
   let nodeFor x         = lookupMod x mods    -- Recursion happens here!
 
@@ -224,8 +224,8 @@ collapse _ _ ([],_) = Nothing
 collapse opts (Trie.Sub ts mb) ([q],alsoMod') =
   do t   <- Map.lookup q ts
      let alsoMod = alsoMod' || mod_in_cluster opts
-         -- if modules are moved in their sub-directory clsuter,
-         -- then we always want to collapse them, irrspective of the flag given
+         -- if modules are moved in their sub-directory cluster,
+         -- then we always want to collapse them, irrespective of the flag given
 
 
          nestedMods = [ nm | Trie.Sub _ (Just xs) <- Map.elems ts
@@ -547,7 +547,7 @@ options =
     "Remove imports if the module is imported by another imported module"
 
   , Option ['d'] ["graph-dim"] (ReqArg set_size "SIZE,SIZE")
-    "Set dimensions of the graph.  See the `size` attribute of graphvize."
+    "Set dimensions of the graph.  See the `size` attribute of graphviz."
 
   , Option ['s'] ["colors"] (ReqArg add_color_scheme "NUM")
     "Choose a color scheme number (0-5)"
